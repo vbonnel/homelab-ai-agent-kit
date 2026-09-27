@@ -110,7 +110,7 @@ claude/CLAUDE.md            global rules for Claude (linked into ~/.claude/CLAUD
 claude/settings.json        what Claude may do without asking (merged into ~/.claude/settings.json)
 claude/skills/feature/      the /feature command
 claude/skills/init-project/ the /init-project command + project templates
-templates/docs/             the standard docs website (Starlight)
+templates/docs/             the standard docs website (Starlight, Mermaid diagrams)
 lib/                        small helpers (docs web server, settings merge)
 ```
 

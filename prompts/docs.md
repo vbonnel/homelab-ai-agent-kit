@@ -17,6 +17,9 @@ Then:
 - If new settings (.env keys) were added, list their NAMES and what they are for
   in getting-started.md. Never write real values or secrets.
 - If the way to run, restart, back up or fix the app changed, update operations.md.
+- If {{DOCS_DIR}}/astro.config.mjs uses astro-mermaid, draw diagrams as ```mermaid
+  code blocks (flowchart, sequenceDiagram...), not text drawings. Quote labels
+  with special characters, e.g. A["data/*.png"]. No fixed colors.
 - Add ONE line at the top of the list in changelog.md, in this form:
     - {{DATE}} - <one plain-language sentence about what changed for the owner>
 - Edit ONLY files inside {{DOCS_DIR}}/src/content/docs/. Nothing else.

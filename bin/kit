@@ -238,6 +238,7 @@ Nothing was merged. Claude must update the work copy with the latest project fir
   if [ -f "$wt/$DOCS_DIR/package.json" ] && [ -d "$main/$DOCS_DIR/node_modules" ]; then
     say "    Checking the docs website still builds..."
     [ -e "$wt/$DOCS_DIR/node_modules" ] || { ln -s "$main/$DOCS_DIR/node_modules" "$wt/$DOCS_DIR/node_modules"; exclude_add "/$DOCS_DIR/node_modules"; }
+    docs_deps "$wt/$DOCS_DIR" || die "npm install failed in the work copy's $DOCS_DIR/ - nothing was merged." 6
     ( cd "$wt/$DOCS_DIR" && ASTRO_TELEMETRY_DISABLED=1 npx --no-install astro build > "$wt/.kit/docs-build.txt" 2>&1 ) \
       || { tail -n 30 "$wt/.kit/docs-build.txt" >&2; die "The docs have an error (above) - nothing was merged." 6; }
     rm -rf "$wt/$DOCS_DIR/dist"
@@ -333,10 +334,28 @@ cmd_docs_init() {
   sed "s|__PROJECT_TITLE__|$esc|" "$KIT_DIR/templates/docs/astro.config.mjs" > "$dir/astro.config.mjs"
   printf 'node_modules/\ndist/\n.astro/\n.dist-previous/\n' > "$dir/.gitignore"
   say "Installing the docs website tools (1-3 minutes)..."
-  ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error astro@latest @astrojs/starlight@latest sharp ) \
+  ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error astro@latest @astrojs/starlight@latest sharp astro-mermaid "mermaid@^11" ) \
     || die "npm install failed in $DOCS_DIR/ (is the internet reachable from this container?)"
   cmd_docs_build || die "First docs build failed."
   say "DOCS READY in $DOCS_DIR/. Next: kit docs service   (makes it available at $(cmd_docs_url))"
+}
+
+# Install the docs website's packages when missing or when package-lock.json changed since the
+# last install (e.g. a merged feature added a package). A work copy's link to the real project's
+# packages is replaced by its own install when its package-lock.json differs, so the real
+# project's packages are never changed from a work copy.
+docs_deps() { # $1=docs dir
+  local dir="$1" real
+  if [ -L "$dir/node_modules" ]; then
+    real="$(readlink -f "$dir/node_modules")"
+    cmp -s "$dir/package-lock.json" "${real%/node_modules}/package-lock.json" && return 0
+    rm "$dir/node_modules"
+  elif [ -d "$dir/node_modules" ]; then
+    { [ -f "$dir/package-lock.json" ] && [ "$dir/package-lock.json" -nt "$dir/node_modules/.package-lock.json" ]; } || return 0
+  fi
+  say "    Installing the docs website's packages..."
+  if [ -f "$dir/package-lock.json" ]; then ( cd "$dir" && npm ci --no-audit --no-fund --loglevel=error )
+  else ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error ); fi
 }
 
 cmd_docs_build() {
@@ -345,9 +364,7 @@ cmd_docs_build() {
   local dir="$root/$DOCS_DIR"
   [ -f "$dir/package.json" ] || die "No docs website in this project ($DOCS_DIR/). Run: kit docs init \"Title\"" 2
   export ASTRO_TELEMETRY_DISABLED=1
-  if [ ! -d "$dir/node_modules" ]; then
-    ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error ) || die "npm install failed in $DOCS_DIR/"
-  fi
+  docs_deps "$dir" || die "npm install failed in $DOCS_DIR/"
   mkdir -p "$root/.kit"
   rm -rf "$dir/.dist-previous"; [ -d "$dir/dist" ] && cp -a "$dir/dist" "$dir/.dist-previous"
   if ( cd "$dir" && npx --no-install astro build ) > "$root/.kit/docs-build.txt" 2>&1; then
