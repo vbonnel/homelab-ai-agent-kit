@@ -116,8 +116,10 @@ only if missing; the owner fills it in).
 ## Step 7 - Optional after-merge step
 If the app runs as a service that must be restarted to pick up code changes,
 ask the owner once: "Restart <service> automatically after each merge?" If
-yes, create `scripts/after-merge.sh` (chmod +x) with that restart command
-only. If no, write the restart command in AGENTS.md.
+yes, create `scripts/after-merge.sh` (chmod +x) from
+`${CLAUDE_SKILL_DIR}/templates/scripts/after-merge.sh`: fill in the restart
+command and the check address; keep the build-then-swap part only if the live
+site serves a built folder. If no, write the restart command in AGENTS.md.
 
 ## Step 8 - Save
 1. `git status` and show the owner a short list of what was added or changed,
