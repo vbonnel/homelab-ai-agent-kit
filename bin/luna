@@ -50,9 +50,9 @@ KEY="$(read_env "$MAIN/.env" LUNA_OPENAI_API_KEY)"
 
 MODEL="${LUNA_MODEL:-gpt-6-luna}"
 case "$mode" in
-  build)  EFFORT="${LUNA_EFFORT_BUILD:-high}";  SANDBOX="workspace-write";;
-  review) EFFORT="${LUNA_EFFORT_REVIEW:-high}"; SANDBOX="read-only";;
-  docs)   EFFORT="${LUNA_EFFORT_DOCS:-medium}"; SANDBOX="workspace-write";;
+  build)  EFFORT="${LUNA_EFFORT_BUILD:-medium}";  SANDBOX="workspace-write";;
+  review) EFFORT="${LUNA_EFFORT_REVIEW:-medium}"; SANDBOX="read-only";;
+  docs)   EFFORT="${LUNA_EFFORT_DOCS:-medium}";   SANDBOX="workspace-write";;
 esac
 if [ "${LUNA_SANDBOX:-on}" = "off" ]; then
   SANDBOX_ARGS=(--dangerously-bypass-approvals-and-sandbox)   # the LXC itself is the sandbox

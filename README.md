@@ -142,8 +142,8 @@ docs/              the docs website source
 
 ```
 LUNA_MODEL=gpt-6-luna        # model used for build / review / docs
-LUNA_EFFORT_BUILD=high       # none | low | medium | high | xhigh | max
-LUNA_EFFORT_REVIEW=high
+LUNA_EFFORT_BUILD=medium     # none | low | medium | high | xhigh | max
+LUNA_EFFORT_REVIEW=medium
 LUNA_EFFORT_DOCS=medium
 LUNA_SANDBOX=on              # set by install.sh: on, or off if Codex's sandbox can't run in this container
 DOCS_PORT=4321

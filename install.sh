@@ -127,8 +127,8 @@ if [ ! -f "$CONF_DIR/config" ]; then
   cat > "$CONF_DIR/config" <<'EOF'
 # Homelab agent kit - settings for this container
 LUNA_MODEL=gpt-6-luna
-LUNA_EFFORT_BUILD=high
-LUNA_EFFORT_REVIEW=high
+LUNA_EFFORT_BUILD=medium
+LUNA_EFFORT_REVIEW=medium
 LUNA_EFFORT_DOCS=medium
 # on = Codex runs Luna in its own sandbox; off = no extra sandbox (the container is the boundary)
 LUNA_SANDBOX=auto
