@@ -1,6 +1,7 @@
 {
   "_comment": "Merged into ~/.claude/settings.json by install.sh. Only the rules below are managed by the kit; your own settings are kept.",
   "model": "opus",
+  "attribution": { "commit": "", "pr": "" },
   "env": {
     "BASH_MAX_TIMEOUT_MS": "3600000"
   },
