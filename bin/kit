@@ -1,0 +1,467 @@
+#!/usr/bin/env bash
+# kit - helper commands used by Claude (and you) for the homelab AI workflow.
+# You normally never type these yourself: /feature and /init-project call them.
+# Run `kit help` for the list.
+set -uo pipefail
+
+KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+KIT_CONF="${KIT_CONF:-$HOME/.config/agent-kit/config}"
+[ -f "$KIT_CONF" ] && . "$KIT_CONF"
+
+# ---------------------------------------------------------------- helpers ---
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '  [ok] %s\n' "$*"; }
+warn() { printf '  [!]  %s\n' "$*" >&2; }
+die()  { printf 'ERROR: %s\n' "$1" >&2; exit "${2:-1}"; }
+
+in_repo() { git rev-parse --is-inside-work-tree >/dev/null 2>&1; }
+need_repo() { in_repo || die "This folder is not a git project. Run /init-project first."; }
+
+# Root of the checkout we are in (real project or a work copy)
+here_root() { git rev-parse --show-toplevel; }
+# Root of the REAL project, even when called from inside a work copy
+main_root() { dirname "$(git rev-parse --path-format=absolute --git-common-dir)"; }
+in_workcopy() { [ "$(git rev-parse --path-format=absolute --git-dir)" != "$(git rev-parse --path-format=absolute --git-common-dir)" ]; }
+
+# Project settings file (.agentkit) -> DOCS_DIR, DOCS_PORT
+load_project_conf() {
+  DOCS_DIR="docs"; PROJECT_DOCS_PORT=""
+  local f="$1/.agentkit"
+  if [ -f "$f" ]; then
+    local v
+    v="$(sed -n 's/^DOCS_DIR=//p' "$f" | tail -n1)"; [ -n "$v" ] && DOCS_DIR="$v"
+    v="$(sed -n 's/^DOCS_PORT=//p' "$f" | tail -n1)"; [ -n "$v" ] && PROJECT_DOCS_PORT="$v"
+  fi
+}
+
+clean_name() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//'
+}
+
+# Add a line to the shared git "exclude" file (ignored in every checkout, never committed)
+exclude_add() {
+  local ex; ex="$(git rev-parse --path-format=absolute --git-common-dir)/info/exclude"
+  mkdir -p "$(dirname "$ex")"; touch "$ex"
+  grep -qxF "$1" "$ex" || printf '%s\n' "$1" >> "$ex"
+}
+
+tracked_changes() { # list modified/staged tracked files in dir $1
+  git -C "$1" status --porcelain --untracked-files=no
+}
+
+wt_path() { printf '%s/.claude/worktrees/%s' "$(main_root)" "$1"; }
+
+# ------------------------------------------------------------------ start ---
+cmd_start() {
+  need_repo
+  local anyway=0 raw=""
+  for a in "$@"; do case "$a" in --anyway) anyway=1;; *) raw="$a";; esac; done
+  [ -n "$raw" ] || die "Usage: kit start <name> [--anyway]"
+  in_workcopy && die "You are already inside a work copy. Leave it first (ExitWorktree)."
+  git rev-parse --verify -q HEAD >/dev/null || die "The project has no saved version yet. Run /init-project first."
+  local name; name="$(clean_name "$raw")"; [ -n "$name" ] || die "Invalid name: $raw"
+  local main target wt branch="feature/$name"
+  main="$(main_root)"; wt="$main/.claude/worktrees/$name"
+  target="$(git -C "$main" symbolic-ref --short -q HEAD)" || die "The real project is not on a normal branch (detached). Ask Claude to fix that first."
+  [ -e "$wt" ] && die "A work copy named '$name' already exists. Use '/feature continue' or pick another name." 2
+  git -C "$main" show-ref --verify -q "refs/heads/$branch" && die "Branch $branch already exists. Pick another name." 2
+
+  if [ $anyway -eq 0 ]; then
+    local dirty; dirty="$(tracked_changes "$main")"
+    if [ -n "$dirty" ]; then
+      say "UNSAVED-CHANGES: the real project has changes that are not saved in git:"
+      printf '%s\n' "$dirty" | sed 's/^/    /'
+      say "The work copy would NOT include them. Save them first (kit save --main \"...\") or re-run with --anyway."
+      exit 10
+    fi
+  fi
+
+  exclude_add "/.claude/worktrees/"; exclude_add ".kit/"
+  mkdir -p "$main/.claude/worktrees"
+  git -C "$main" worktree add -q -b "$branch" "$wt" HEAD || die "Could not create the work copy."
+  mkdir -p "$wt/.kit"; printf '%s\n' "$target" > "$wt/.kit/target-branch"
+  git -C "$main" rev-parse HEAD > "$wt/.kit/start-commit"
+
+  # Safe settings: the work copy never gets the real .env
+  if [ -f "$wt/.env.workcopy" ]; then cp "$wt/.env.workcopy" "$wt/.env"
+  elif [ -f "$main/.env.workcopy" ]; then cp "$main/.env.workcopy" "$wt/.env"
+  else printf '# Work copy placeholder: real settings are never copied here (agent kit).\n' > "$wt/.env"
+  fi
+
+  # Reuse installed dependencies from the real project (they are not in git)
+  local d
+  for d in venv .venv node_modules docs/node_modules; do
+    if [ -d "$main/$d" ] && [ ! -e "$wt/$d" ] && git -C "$main" check-ignore -q "$d"; then
+      mkdir -p "$(dirname "$wt/$d")"; ln -s "$main/$d" "$wt/$d"; exclude_add "/$d"
+    fi
+  done
+
+  say "WORKCOPY: $wt"
+  say "BRANCH: $branch (from $target)"
+  say "Next: EnterWorktree with path=$wt"
+}
+
+# ----------------------------------------------------------------- status ---
+cmd_status() {
+  need_repo
+  local main; main="$(main_root)"
+  local found=0 path branch
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*) path="${line#worktree }";;
+      "branch "*)   branch="${line#branch refs/heads/}";
+        case "$path" in "$main/.claude/worktrees/"*)
+          found=1
+          local name="${path##*/}" target ahead dirty st
+          target="$(cat "$path/.kit/target-branch" 2>/dev/null || echo main)"
+          ahead="$(git -C "$path" rev-list --count "$target..HEAD" 2>/dev/null || echo '?')"
+          dirty="$(git -C "$path" status --porcelain 2>/dev/null | head -c1)"
+          st="$(sed -n 's/^Status:[[:space:]]*//p' "$path/specs/$name.md" 2>/dev/null | head -n1)"
+          say "- $name"
+          say "    branch: $branch  (saved steps: $ahead, unsaved edits: $([ -n "$dirty" ] && echo yes || echo no))"
+          say "    status: ${st:-unknown (no specs/$name.md yet)}"
+          say "    path:   $path"
+        esac;;
+    esac
+  done < <(git -C "$main" worktree list --porcelain)
+  [ $found -eq 1 ] || say "No work copies in progress."
+}
+
+# ------------------------------------------------------------------- save ---
+cmd_save() {
+  need_repo
+  local onmain=0 msg=""
+  for a in "$@"; do case "$a" in --main) onmain=1;; *) msg="$a";; esac; done
+  [ -n "$msg" ] || die "Usage: kit save \"message\" [--main]"
+  if ! in_workcopy && [ $onmain -eq 0 ]; then
+    die "This is the real project, not a work copy. Use: kit save --main \"message\" (asks you first)."
+  fi
+  local root; root="$(here_root)"; cd "$root" || exit 1
+  git add -A
+  local bad
+  bad="$(git diff --cached --name-only | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production|prod)$|\.(db|sqlite|sqlite3)$|(^|/)id_(rsa|ed25519)|\.(pem|key|p12)$' || true)"
+  if [ -n "$bad" ]; then
+    git reset -q
+    die "Refusing to save secret/data files into git:
+$(printf '%s\n' "$bad" | sed 's/^/    /')
+Add them to .gitignore first."
+  fi
+  local big
+  big="$(git diff --cached --name-only -z | xargs -0 -r -I{} sh -c 'f="{}"; [ -f "$f" ] && [ "$(wc -c < "$f")" -gt 20000000 ] && echo "$f"' || true)"
+  if [ -n "$big" ]; then
+    git reset -q
+    die "Refusing to save very large files (>20 MB) into git:
+$(printf '%s\n' "$big" | sed 's/^/    /')"
+  fi
+  if git diff --cached --quiet; then say "Nothing new to save."; return 0; fi
+  local n; n="$(git diff --cached --name-only | wc -l | tr -d ' ')"
+  git commit -q -m "$msg" || die "Save failed (git commit). Is git user.name/user.email set? Run: kit doctor"
+  say "SAVED: $(git rev-parse --short HEAD) - $msg ($n files)"
+}
+
+# ------------------------------------------------------------------- test ---
+cmd_test() {
+  need_repo
+  local root; root="$(here_root)"; cd "$root" || exit 1
+  [ -f scripts/test.sh ] || die "No test script (scripts/test.sh). Run /init-project first." 2
+  mkdir -p .kit; exclude_add ".kit/"
+  local out=".kit/test-output.txt" rc
+  timeout "${KIT_TEST_TIMEOUT:-30m}" bash scripts/test.sh > "$out" 2>&1; rc=$?
+  if [ $rc -eq 0 ]; then
+    say "TESTS PASSED"; tail -n 15 "$out"
+  else
+    say "TESTS FAILED (exit $rc). Last lines (full output: $root/$out):"; tail -n 60 "$out"
+  fi
+  return $rc
+}
+
+# ------------------------------------------------------------------- diff ---
+cmd_diff() {
+  need_repo
+  in_workcopy || die "Run this inside a work copy."
+  local target base; target="$(cat "$(here_root)/.kit/target-branch" 2>/dev/null || echo main)"
+  base="$(git merge-base HEAD "$target")"
+  say "BASE: $base ($target)"
+  git diff --stat "$base..HEAD"
+  [ "${1:-}" = "--stat" ] && return 0
+  echo; git diff "$base..HEAD" -- . ':(exclude)*.lock' ':(exclude)package-lock.json'
+}
+
+# ------------------------------------------------------------------ merge ---
+cmd_merge() {
+  need_repo
+  local raw="${1:-}"; [ -n "$raw" ] || die "Usage: kit merge <name>"
+  local name main wt branch target
+  name="$(clean_name "$raw")"; main="$(main_root)"; wt="$main/.claude/worktrees/$name"
+  [ -d "$wt" ] || die "No work copy named '$name'. See: kit status"
+  case "$(pwd -P)/" in "$(readlink -f "$wt")/"*) die "Leave the work copy first (ExitWorktree keep), then run kit merge from the real project.";; esac
+  branch="$(git -C "$wt" symbolic-ref --short -q HEAD)" || die "Work copy is not on a branch."
+  target="$(cat "$wt/.kit/target-branch" 2>/dev/null || git -C "$main" symbolic-ref --short HEAD)"
+  [ "$(git -C "$main" symbolic-ref --short -q HEAD)" = "$target" ] || die "The real project is not on branch '$target' anymore. Ask Claude to check." 8
+
+  say "1/6 Checking the work copy is fully saved..."
+  [ -z "$(git -C "$wt" status --porcelain)" ] || { git -C "$wt" status --short >&2; die "The work copy has unsaved edits. Save them first (kit save)." 9; }
+  say "2/6 Checking the real project has no unsaved changes..."
+  local dirty; dirty="$(tracked_changes "$main")"
+  [ -z "$dirty" ] || { printf '%s\n' "$dirty" >&2; die "The real project has changes not saved in git (listed above). Save them first: kit save --main \"...\"" 7; }
+
+  say "3/6 Bringing in the latest version of the real project..."
+  if [ "$(git -C "$wt" rev-list --count "HEAD..$target")" != "0" ]; then
+    if ! git -C "$wt" merge -q --no-edit "$target" >/dev/null 2>&1; then
+      local files; files="$(git -C "$wt" diff --name-only --diff-filter=U)"
+      git -C "$wt" merge --abort 2>/dev/null
+      die "OVERLAP: the real project changed the same places as this feature:
+$(printf '%s\n' "$files" | sed 's/^/    /')
+Nothing was merged. Claude must update the work copy with the latest project first." 3
+    fi
+  fi
+
+  say "4/6 Running the tests in the work copy..."
+  ( cd "$wt" && cmd_test ) || die "Tests failed - nothing was merged." 4
+
+  load_project_conf "$wt"
+  if [ -f "$wt/$DOCS_DIR/package.json" ] && [ -d "$main/$DOCS_DIR/node_modules" ]; then
+    say "    Checking the docs website still builds..."
+    [ -e "$wt/$DOCS_DIR/node_modules" ] || { ln -s "$main/$DOCS_DIR/node_modules" "$wt/$DOCS_DIR/node_modules"; exclude_add "/$DOCS_DIR/node_modules"; }
+    ( cd "$wt/$DOCS_DIR" && ASTRO_TELEMETRY_DISABLED=1 npx --no-install astro build > "$wt/.kit/docs-build.txt" 2>&1 ) \
+      || { tail -n 30 "$wt/.kit/docs-build.txt" >&2; die "The docs have an error (above) - nothing was merged." 6; }
+    rm -rf "$wt/$DOCS_DIR/dist"
+  fi
+
+  say "5/6 Merging into the real project..."
+  if ! git -C "$main" merge -q --no-ff -m "Feature: $name" "$branch" >/dev/null 2>"$wt/.kit/merge-error.txt"; then
+    git -C "$main" merge --abort 2>/dev/null
+    cat "$wt/.kit/merge-error.txt" >&2
+    die "Merge failed (see above). Nothing changed in the real project." 5
+  fi
+  local hash; hash="$(git -C "$main" rev-parse --short HEAD)"
+
+  say "6/6 Finishing up..."
+  load_project_conf "$main"
+  if [ -f "$main/$DOCS_DIR/package.json" ]; then
+    ( cd "$main" && cmd_docs_build ) >/dev/null 2>&1 && ok "Docs website updated" || warn "Docs website could not be rebuilt (the old version stays online). Run: kit docs build"
+  fi
+  if [ -x "$main/scripts/after-merge.sh" ]; then
+    say "    Running scripts/after-merge.sh ..."
+    ( cd "$main" && ./scripts/after-merge.sh ) || warn "scripts/after-merge.sh reported a problem (see above)."
+  fi
+  git -C "$main" worktree unlock "$wt" >/dev/null 2>&1
+  git -C "$main" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
+  git -C "$main" worktree prune
+  git -C "$main" branch -q -d "$branch" 2>/dev/null || true
+
+  say ""
+  say "MERGED: '$name' is now in the real project (version $hash)."
+  say "UNDO: ask Claude \"undo the last feature\" (it will run: git revert -m 1 $hash)"
+}
+
+# ---------------------------------------------------------------- discard ---
+cmd_discard() {
+  need_repo
+  local raw="${1:-}"; [ -n "$raw" ] || die "Usage: kit discard <name>"
+  local name main wt branch
+  name="$(clean_name "$raw")"; main="$(main_root)"; wt="$main/.claude/worktrees/$name"
+  [ -d "$wt" ] || die "No work copy named '$name'."
+  case "$(pwd -P)/" in "$(readlink -f "$wt")/"*) die "Leave the work copy first (ExitWorktree keep).";; esac
+  branch="$(git -C "$wt" symbolic-ref --short -q HEAD || true)"
+  git -C "$main" worktree unlock "$wt" >/dev/null 2>&1
+  git -C "$main" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
+  git -C "$main" worktree prune
+  [ -n "$branch" ] && git -C "$main" branch -q -D "$branch" 2>/dev/null
+  say "DISCARDED: work copy '$name' deleted. The real project was not touched."
+}
+
+# ------------------------------------------------------------------- .env ---
+cmd_env_keys() {
+  need_repo
+  local f="${1:-$(main_root)/.env}"
+  [ -f "$f" ] || { say "(no .env file at $f)"; return 0; }
+  say "Keys in $f (values hidden):"
+  sed -nE 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$/\2 \3/p' "$f" \
+    | while read -r k v; do if [ -n "$v" ] && [ "$v" != '""' ] && [ "$v" != "''" ]; then echo "  $k (set)"; else echo "  $k (EMPTY)"; fi; done
+}
+
+cmd_env_ensure() {
+  need_repo
+  local key="${1:-}"; [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Usage: kit env-ensure KEY_NAME"
+  local f; f="$(main_root)/.env"
+  [ -f "$f" ] || { touch "$f"; chmod 600 "$f"; }
+  if grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}[[:space:]]*=" "$f"; then say "$key already present in .env"
+  else
+    [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"
+    printf '%s=\n' "$key" >> "$f"; say "Added empty '$key=' line to $f - fill it in with: nano $f"
+  fi
+}
+
+# ------------------------------------------------------------------- docs ---
+docs_port() { load_project_conf "$(here_root)"; echo "${PROJECT_DOCS_PORT:-${DOCS_PORT:-4321}}"; }
+
+cmd_docs_init() {
+  need_repo
+  in_workcopy && die "Run docs init in the real project, not a work copy."
+  local title="${1:-}"; [ -n "$title" ] || die "Usage: kit docs init \"Project title\""
+  local root; root="$(here_root)"; load_project_conf "$root"
+  local dir="$root/$DOCS_DIR"
+  if [ -e "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
+    die "Folder $DOCS_DIR/ already exists and is not empty. Put DOCS_DIR=<other-name> in .agentkit, or remove it." 2
+  fi
+  export ASTRO_TELEMETRY_DISABLED=1
+  say "Creating the docs website (Starlight) in $DOCS_DIR/ ..."
+  mkdir -p "$dir/src/content/docs"
+  cp "$KIT_DIR/templates/docs/package.json" "$dir/package.json"
+  cp "$KIT_DIR/templates/docs/content.config.ts" "$dir/src/content.config.ts"
+  cp "$KIT_DIR/templates/docs/pages/"*.md "$dir/src/content/docs/"
+  local esc; esc="$(printf '%s' "$title" | sed 's/[\/&|]/\\&/g; s/"/\\"/g')"
+  sed "s|__PROJECT_TITLE__|$esc|" "$KIT_DIR/templates/docs/astro.config.mjs" > "$dir/astro.config.mjs"
+  printf 'node_modules/\ndist/\n.astro/\n.dist-previous/\n' > "$dir/.gitignore"
+  say "Installing the docs website tools (1-3 minutes)..."
+  ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error astro@latest @astrojs/starlight@latest sharp ) \
+    || die "npm install failed in $DOCS_DIR/ (is the internet reachable from this container?)"
+  cmd_docs_build || die "First docs build failed."
+  say "DOCS READY in $DOCS_DIR/. Next: kit docs service   (makes it available at $(cmd_docs_url))"
+}
+
+cmd_docs_build() {
+  need_repo
+  local root; root="$(here_root)"; load_project_conf "$root"
+  local dir="$root/$DOCS_DIR"
+  [ -f "$dir/package.json" ] || die "No docs website in this project ($DOCS_DIR/). Run: kit docs init \"Title\"" 2
+  export ASTRO_TELEMETRY_DISABLED=1
+  if [ ! -d "$dir/node_modules" ]; then
+    ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error ) || die "npm install failed in $DOCS_DIR/"
+  fi
+  mkdir -p "$root/.kit"
+  rm -rf "$dir/.dist-previous"; [ -d "$dir/dist" ] && cp -a "$dir/dist" "$dir/.dist-previous"
+  if ( cd "$dir" && npx --no-install astro build ) > "$root/.kit/docs-build.txt" 2>&1; then
+    rm -rf "$dir/.dist-previous"; say "DOCS BUILT: $dir/dist"
+  else
+    [ -d "$dir/.dist-previous" ] && { rm -rf "$dir/dist"; mv "$dir/.dist-previous" "$dir/dist"; }
+    tail -n 30 "$root/.kit/docs-build.txt" >&2
+    die "Docs build failed (the previous website version is kept). Details: $root/.kit/docs-build.txt"
+  fi
+}
+
+cmd_docs_url() {
+  local ip; ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  echo "http://${ip:-localhost}:$(docs_port)"
+}
+
+cmd_docs_service() {
+  need_repo
+  in_workcopy && die "Run this in the real project."
+  local root port name unit node
+  root="$(here_root)"; load_project_conf "$root"
+  port="${1:-$(docs_port)}"
+  [[ "$port" =~ ^[0-9]+$ ]] || die "Bad port: $port"
+  [ -d "$root/$DOCS_DIR/dist" ] || cmd_docs_build || exit 1
+  name="$(clean_name "$(basename "$root")")"; unit="agent-kit-docs-$name"
+  node="$(command -v node)" || die "node is not installed"
+  if ! command -v systemctl >/dev/null || [ ! -d /run/systemd/system ]; then
+    say "systemd is not available. Start the docs website manually with:"
+    say "  $node $KIT_DIR/lib/docs-serve.mjs $root/$DOCS_DIR/dist $port"; return 0
+  fi
+  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$port\$" && ! systemctl is-active -q "$unit"; then
+    die "Port $port is already used by something else. Try: kit docs service $((port+1))"
+  fi
+  cat > "/etc/systemd/system/$unit.service" <<EOF
+[Unit]
+Description=Docs website for $name (homelab agent kit)
+After=network.target
+
+[Service]
+ExecStart=$node $KIT_DIR/lib/docs-serve.mjs $root/$DOCS_DIR/dist $port
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload && systemctl enable -q --now "$unit" && systemctl restart "$unit" || die "Could not start service $unit"
+  if [ -f "$root/.agentkit" ] && grep -q '^DOCS_PORT=' "$root/.agentkit"; then
+    sed -i "s/^DOCS_PORT=.*/DOCS_PORT=$port/" "$root/.agentkit"
+  else printf 'DOCS_PORT=%s\n' "$port" >> "$root/.agentkit"; fi
+  sleep 1
+  say "DOCS ONLINE: $(cmd_docs_url)   (service: $unit, starts on boot)"
+}
+
+cmd_docs() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    init) cmd_docs_init "$@";;
+    build) cmd_docs_build "$@";;
+    service) cmd_docs_service "$@";;
+    url) cmd_docs_url;;
+    *) die "Usage: kit docs init \"Title\" | build | service [port] | url";;
+  esac
+}
+
+# ----------------------------------------------------------------- doctor ---
+cmd_doctor() {
+  local bad=0
+  chk() { if eval "$2" >/dev/null 2>&1; then ok "$1"; else warn "$1 - $3"; bad=1; fi; }
+  say "Agent kit: $KIT_DIR ($(git -C "$KIT_DIR" log -1 --format='%h %cd' --date=short 2>/dev/null || echo 'not a git clone'))"
+  chk "git installed" "command -v git" "install git"
+  chk "git name/email set" "git config user.name && git config user.email" "run /opt/agent-kit/install.sh again"
+  chk "node installed" "command -v node" "run install.sh"
+  chk "Claude Code installed" "command -v claude" "run install.sh"
+  chk "Codex CLI installed (for GPT-6 Luna)" "command -v codex" "run install.sh"
+  chk "/feature skill linked" "test -f $HOME/.claude/skills/feature/SKILL.md" "run install.sh"
+  chk "/init-project skill linked" "test -f $HOME/.claude/skills/init-project/SKILL.md" "run install.sh"
+  if in_repo; then
+    local main; main="$(main_root)"
+    say "Project: $main"
+    chk "AGENTS.md present" "test -f '$main/AGENTS.md'" "run /init-project"
+    chk "scripts/test.sh present" "test -f '$main/scripts/test.sh'" "run /init-project"
+    chk "OpenAI key in .env (for Luna)" "grep -qE '^[[:space:]]*(export[[:space:]]+)?(LUNA_OPENAI_API_KEY|OPENAI_API_KEY)[[:space:]]*=[[:space:]]*[^[:space:]]' '$main/.env'" "put OPENAI_API_KEY=sk-... in $main/.env"
+    chk ".env is ignored by git" "git -C '$main' check-ignore -q .env" "add .env to .gitignore"
+    ( cd "$main" && load_project_conf "$main" && [ -f "$main/$DOCS_DIR/package.json" ] ) && say "  Docs: $(cd "$main" && cmd_docs_url)"
+  fi
+  say "Luna: model=${LUNA_MODEL:-gpt-6-luna} sandbox=${LUNA_SANDBOX:-on}"
+  [ $bad -eq 0 ] && say "All good." || say "Some checks failed (see [!] lines)."
+  return $bad
+}
+
+cmd_update() {
+  git -C "$KIT_DIR" pull --ff-only || die "Could not update the kit (git pull failed)."
+  "$KIT_DIR/install.sh" --quick
+}
+
+cmd_help() {
+  cat <<EOF
+kit - homelab agent kit helper (normally used by Claude, not typed by you)
+
+  kit doctor                 check that everything is installed
+  kit update                 update the kit from GitHub and re-install
+  kit status                 list work copies in progress
+  kit docs url               show the docs website address
+
+Used by Claude during /feature and /init-project:
+  kit start <name> [--anyway]   create a work copy (branch feature/<name>)
+  kit save "msg" [--main]       save (commit) - refuses secrets and huge files
+  kit test                      run scripts/test.sh, keep output in .kit/
+  kit diff [--stat]             changes made in this work copy
+  kit merge <name>              test, then merge a work copy into the real project
+  kit discard <name>            delete a work copy (real project untouched)
+  kit env-keys                  list .env key names (never values)
+  kit env-ensure KEY            add an empty KEY= line to .env
+  kit docs init "Title" | build | service [port] | url
+EOF
+}
+
+sub="${1:-help}"; shift || true
+case "$sub" in
+  start) cmd_start "$@";;
+  status) cmd_status "$@";;
+  save) cmd_save "$@";;
+  test) cmd_test "$@";;
+  diff) cmd_diff "$@";;
+  merge) cmd_merge "$@";;
+  discard) cmd_discard "$@";;
+  env-keys) cmd_env_keys "$@";;
+  env-ensure) cmd_env_ensure "$@";;
+  docs) cmd_docs "$@";;
+  doctor) cmd_doctor "$@";;
+  update) cmd_update "$@";;
+  help|-h|--help) cmd_help;;
+  *) die "Unknown command: $sub (see: kit help)";;
+esac

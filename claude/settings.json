@@ -1,0 +1,58 @@
+{
+  "_comment": "Merged into ~/.claude/settings.json by install.sh. Only the rules below are managed by the kit; your own settings are kept.",
+  "model": "opus",
+  "env": {
+    "BASH_MAX_TIMEOUT_MS": "3600000"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(luna build *)",
+      "Bash(luna review *)",
+      "Bash(luna docs *)",
+      "Bash(kit start *)",
+      "Bash(kit status)",
+      "Bash(kit save *)",
+      "Bash(kit test)",
+      "Bash(kit diff)",
+      "Bash(kit diff --stat)",
+      "Bash(kit env-keys)",
+      "Bash(kit env-ensure *)",
+      "Bash(kit docs init *)",
+      "Bash(kit docs build)",
+      "Bash(kit docs url)",
+      "Bash(kit doctor)",
+      "Bash(kit help)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git worktree list *)",
+      "EnterWorktree",
+      "ExitWorktree",
+      "Edit(**/specs/**)",
+      "Edit(**/.kit/**)"
+    ],
+    "ask": [
+      "Bash(kit merge *)",
+      "Bash(kit discard *)",
+      "Bash(kit save --main *)",
+      "Bash(kit save * --main)",
+      "Bash(git push *)",
+      "Bash(pip install *)",
+      "Bash(pip3 install *)",
+      "Bash(npm install *)",
+      "Bash(apt *)",
+      "Bash(apt-get *)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.production)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(rsync *)"
+    ]
+  }
+}

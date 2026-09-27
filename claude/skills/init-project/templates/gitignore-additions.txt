@@ -1,0 +1,22 @@
+# --- homelab agent kit ---
+# secrets (the safe .env.workcopy IS saved in git)
+.env
+.env.*
+!.env.workcopy
+!.env.example
+*.pem
+*.key
+# work copies, run logs, local Claude settings
+.claude/worktrees/
+.claude/settings.local.json
+.kit/
+# docs website build output
+docs/node_modules/
+docs/dist/
+docs/.astro/
+docs/.dist-previous/
+# installed tools
+venv/
+.venv/
+node_modules/
+__pycache__/

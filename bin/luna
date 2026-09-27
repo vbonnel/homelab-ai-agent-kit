@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# luna - run GPT-6 Luna (through the Codex CLI) on a feature, inside a work copy.
+#
+#   luna build  <name> [--notes FILE]   write the code + tests described in specs/<name>.md
+#   luna review <name>                  read-only review of the work copy against the spec
+#   luna docs   <name>                  update the docs website pages for the feature
+#
+# The OpenAI key is read from the REAL project's .env (LUNA_OPENAI_API_KEY or OPENAI_API_KEY).
+# Only Luna's final report is printed; the full run log is kept in .kit/runs/.
+set -uo pipefail
+
+KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+KIT_CONF="${KIT_CONF:-$HOME/.config/agent-kit/config}"
+[ -f "$KIT_CONF" ] && . "$KIT_CONF"
+
+die() { printf 'LUNA ERROR: %s\n' "$1" >&2; exit "${2:-1}"; }
+
+mode="${1:-}"; name="${2:-}"; shift 2 2>/dev/null || true
+notes=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --notes) notes="${2:-}"; shift 2;;
+    *) die "Unknown option: $1";;
+  esac
+done
+case "$mode" in build|review|docs) ;; *) die "Usage: luna build|review|docs <name> [--notes FILE]";; esac
+[ -n "$name" ] || die "Missing feature name. Usage: luna $mode <name>"
+
+command -v codex >/dev/null || die "Codex CLI is not installed. Run /opt/agent-kit/install.sh"
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "Run luna inside the project's work copy."
+ROOT="$(git rev-parse --show-toplevel)"
+MAIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+[ "$ROOT" != "$MAIN" ] || die "This is the real project, not a work copy. Luna only works in work copies (kit start)."
+cd "$ROOT" || exit 1
+
+SPEC="specs/$name.md"
+[ -f "$SPEC" ] || die "Spec not found: $ROOT/$SPEC"
+
+# --- OpenAI key from the real project's .env (never printed) ---
+read_env() { # $1=file $2=key
+  [ -f "$1" ] || return 1
+  sed -nE "s/^[[:space:]]*(export[[:space:]]+)?$2[[:space:]]*=[[:space:]]*(.*)[[:space:]]*\$/\2/p" "$1" | tail -n1 \
+    | sed -E "s/^\"(.*)\"\$/\1/; s/^'(.*)'\$/\1/"
+}
+KEY="$(read_env "$MAIN/.env" LUNA_OPENAI_API_KEY)"
+[ -n "$KEY" ] || KEY="$(read_env "$MAIN/.env" OPENAI_API_KEY)"
+[ -n "$KEY" ] || KEY="${CODEX_API_KEY:-${OPENAI_API_KEY:-}}"
+[ -n "$KEY" ] || die "No OpenAI key. Put OPENAI_API_KEY=sk-... in $MAIN/.env (nano $MAIN/.env)" 2
+
+MODEL="${LUNA_MODEL:-gpt-6-luna}"
+case "$mode" in
+  build)  EFFORT="${LUNA_EFFORT_BUILD:-high}";  SANDBOX="workspace-write";;
+  review) EFFORT="${LUNA_EFFORT_REVIEW:-high}"; SANDBOX="read-only";;
+  docs)   EFFORT="${LUNA_EFFORT_DOCS:-medium}"; SANDBOX="workspace-write";;
+esac
+if [ "${LUNA_SANDBOX:-on}" = "off" ]; then
+  SANDBOX_ARGS=(--dangerously-bypass-approvals-and-sandbox)   # the LXC itself is the sandbox
+else
+  SANDBOX_ARGS=(--sandbox "$SANDBOX")
+fi
+
+TARGET="$(cat .kit/target-branch 2>/dev/null || echo main)"
+BASE="$(git merge-base HEAD "$TARGET" 2>/dev/null || cat .kit/start-commit 2>/dev/null)"
+DOCS_DIR="docs"; [ -f .agentkit ] && v="$(sed -n 's/^DOCS_DIR=//p' .agentkit | tail -n1)" && [ -n "$v" ] && DOCS_DIR="$v"
+
+# --- build the prompt from the template ---
+mkdir -p .kit/runs
+ex="$(git rev-parse --path-format=absolute --git-common-dir)/info/exclude"; grep -qxF ".kit/" "$ex" 2>/dev/null || echo ".kit/" >> "$ex"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+PROMPT=".kit/runs/$STAMP-$mode-prompt.md"; LOG=".kit/runs/$STAMP-$mode.log"; REPORT=".kit/$mode-report.md"
+
+NOTES_BLOCK=""
+if [ -n "$notes" ]; then
+  [ -f "$notes" ] || die "Notes file not found: $notes"
+  NOTES_BLOCK="$(printf '## THIS IS A FIX ROUND\nFix ONLY the issues below (from the tests and/or the review). Do not change anything else.\n\n%s\n' "$(cat "$notes")")"
+fi
+
+python_free_render() { # replace {{VARS}} without needing python
+  local tpl="$KIT_DIR/prompts/$mode.md"
+  [ -f "$tpl" ] || die "Missing prompt template $tpl"
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$line" = "{{NOTES_BLOCK}}" ]; then printf '%s\n' "$NOTES_BLOCK"; continue; fi
+    line="${line//\{\{SPEC\}\}/$SPEC}"
+    line="${line//\{\{BASE\}\}/$BASE}"
+    line="${line//\{\{DOCS_DIR\}\}/$DOCS_DIR}"
+    line="${line//\{\{DATE\}\}/$(date +%Y-%m-%d)}"
+    printf '%s\n' "$line"
+  done < "$tpl"
+}
+python_free_render > "$PROMPT"
+
+BEFORE="$(git status --porcelain)"
+rm -f "$REPORT"
+echo "Luna ($MODEL, effort $EFFORT, $mode) is working... this can take several minutes."
+START=$(date +%s)
+CODEX_API_KEY="$KEY" timeout "${LUNA_TIMEOUT:-55m}" codex exec \
+  -m "$MODEL" \
+  -c model_reasoning_effort="\"$EFFORT\"" \
+  -c approval_policy='"never"' \
+  "${SANDBOX_ARGS[@]}" \
+  -C "$ROOT" \
+  --ephemeral \
+  --color never \
+  -o "$REPORT" \
+  - < "$PROMPT" > "$LOG" 2>&1
+RC=$?
+SECS=$(( $(date +%s) - START ))
+
+if [ $RC -ne 0 ] || [ ! -s "$REPORT" ]; then
+  echo "LUNA FAILED (exit $RC after ${SECS}s). Last lines of the log ($ROOT/$LOG):"
+  tail -n 40 "$LOG" | sed -E 's/(sk-[A-Za-z0-9_-]{6})[A-Za-z0-9_-]+/\1.../g'
+  [ $RC -eq 124 ] && echo "(stopped: took longer than ${LUNA_TIMEOUT:-55m})"
+  exit 1
+fi
+
+echo "=== LUNA $mode REPORT (${SECS}s) - saved in $ROOT/$REPORT ==="
+cat "$REPORT"
+echo "=== END OF REPORT ==="
+
+AFTER="$(git status --porcelain)"
+case "$mode" in
+  review)
+    if [ "$AFTER" != "$BEFORE" ]; then
+      echo "WARNING: the reviewer changed files (it should not). Changes now pending:"; git status --short
+    fi
+    v="$(grep -Eo 'VERDICT:[[:space:]]*(PASS|CHANGES)' "$REPORT" | tail -n1)"
+    echo "${v:-VERDICT: UNKNOWN (no verdict line - treat as CHANGES)}"
+    ;;
+  docs)
+    outside="$(git status --porcelain | awk '{print $NF}' | grep -vE "^($DOCS_DIR/|specs/)" || true)"
+    [ -n "$outside" ] && { echo "WARNING: Luna changed files outside $DOCS_DIR/ during the docs step:"; printf '  %s\n' $outside; }
+    echo "Files changed:"; git status --short
+    ;;
+  build)
+    echo "Files changed:"; git status --short
+    ;;
+esac
+exit 0
