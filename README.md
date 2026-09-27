@@ -1,6 +1,6 @@
 # Homelab AI agent kit
 
-One command to build software with AI in your homelab containers:
+One command to build software using AI in your SWE projects :
 
 ```
 /feature <what you want, in plain words>
@@ -9,26 +9,13 @@ One command to build software with AI in your homelab containers:
 - **Claude Opus** (the architect) plans the change with you, then checks the result.
 - **GPT-6 Luna** (through the Codex CLI) writes the code, reviews it and updates the docs.
 - Everything happens in a separate **work copy** of your project. The real
-  project changes only when you say yes to the merge. Every change can be undone.
+  project changes only when you say yes to the merge.
 - Each project gets a **docs website** at `http://<container-IP>:4321`, updated
   after every merge.
 
-You answer two questions per feature: **"Here's the plan. OK?"** and **"Merge?"**
-
 ---
 
-## 1. Put the kit on GitHub (once)
-
-1. On github.com: **New repository** -> name `homelab-ai-agent-kit` -> **Public**
-   (the kit contains no secrets) -> Create.
-2. Click **uploading an existing file**, drag in all the files and folders
-   of this kit, then **Commit changes**.
-
-(Private also works, but then each container needs a GitHub login to download it.)
-
-## 2. Install in a container (once per container)
-
-Log in to the container as root and run:
+## 1. Install in your project
 
 ```bash
 git clone https://github.com/<your-github-name>/homelab-ai-agent-kit /opt/agent-kit
@@ -49,7 +36,7 @@ The first time Claude starts, it may ask whether to allow the kit's rules file
 ## 3. Prepare a project (once per project)
 
 ```bash
-cd /opt/fablab-aggregator      # your project folder
+cd /opt/your-project-folder     # your project folder
 claude
 /init-project
 ```
@@ -61,14 +48,12 @@ work copies, and the docs website. It shows you everything before saving.
 Then put your OpenAI key in the project's `.env` file:
 
 ```bash
-nano /opt/fablab-aggregator/.env
+nano /opt/your-project-folder/.env
 # add the line:  OPENAI_API_KEY=sk-...
 ```
 
-Tip: in the OpenAI dashboard, make one key per container with a monthly
-spending limit. If a key leaks, you only revoke that one. If your app already
-uses `OPENAI_API_KEY` for itself and you want Luna to use a different key, add
-`LUNA_OPENAI_API_KEY=sk-...` instead.
+Tip: in the OpenAI dashboard, create one key per container with a monthly
+spending limit. If a key leaks, you only revoke the key.
 
 **New project from scratch?** `mkdir /opt/myapp && cd /opt/myapp && claude`,
 then `/init-project a small to-do web app in Python`.
