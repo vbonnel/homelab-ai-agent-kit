@@ -128,6 +128,25 @@ cmd_status() {
 }
 
 # ------------------------------------------------------------------- save ---
+# Stop if the staged files (limited to paths "$@", or all) hold secrets/data or files
+# over 20 MB. Unstages those paths first, so nothing bad is ever saved.
+refuse_bad_staged() {
+  local bad big
+  bad="$(git diff --cached --name-only -- "$@" | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production|prod)$|\.(db|sqlite|sqlite3)$|(^|/)id_(rsa|ed25519)|\.(pem|key|p12)$' || true)"
+  if [ -n "$bad" ]; then
+    git reset -q -- "$@"
+    die "Refusing to save secret/data files into git:
+$(printf '%s\n' "$bad" | sed 's/^/    /')
+Add them to .gitignore first."
+  fi
+  big="$(git diff --cached --name-only -z -- "$@" | xargs -0 -r -I{} sh -c 'f="{}"; [ -f "$f" ] && [ "$(wc -c < "$f")" -gt 20000000 ] && echo "$f"' || true)"
+  if [ -n "$big" ]; then
+    git reset -q -- "$@"
+    die "Refusing to save very large files (>20 MB) into git:
+$(printf '%s\n' "$big" | sed 's/^/    /')"
+  fi
+}
+
 cmd_save() {
   need_repo
   local onmain=0 msg=""
@@ -138,21 +157,7 @@ cmd_save() {
   fi
   local root; root="$(here_root)"; cd "$root" || exit 1
   git add -A
-  local bad
-  bad="$(git diff --cached --name-only | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production|prod)$|\.(db|sqlite|sqlite3)$|(^|/)id_(rsa|ed25519)|\.(pem|key|p12)$' || true)"
-  if [ -n "$bad" ]; then
-    git reset -q
-    die "Refusing to save secret/data files into git:
-$(printf '%s\n' "$bad" | sed 's/^/    /')
-Add them to .gitignore first."
-  fi
-  local big
-  big="$(git diff --cached --name-only -z | xargs -0 -r -I{} sh -c 'f="{}"; [ -f "$f" ] && [ "$(wc -c < "$f")" -gt 20000000 ] && echo "$f"' || true)"
-  if [ -n "$big" ]; then
-    git reset -q
-    die "Refusing to save very large files (>20 MB) into git:
-$(printf '%s\n' "$big" | sed 's/^/    /')"
-  fi
+  refuse_bad_staged
   if git diff --cached --quiet; then say "Nothing new to save."; return 0; fi
   local n; n="$(git diff --cached --name-only | wc -l | tr -d ' ')"
   git commit -q -m "$msg" || die "Save failed (git commit). Is git user.name/user.email set? Run: kit doctor"
@@ -188,6 +193,16 @@ cmd_diff() {
 }
 
 # ------------------------------------------------------------------ merge ---
+# Keep Luna's run logs (prompts, logs, token counts) after the work copy is deleted
+keep_runs() { # $1=main $2=work copy $3=name
+  [ -d "$2/.kit/runs" ] || return 0
+  mkdir -p "$1/.kit/runs/$3" && cp -a "$2/.kit/runs/." "$1/.kit/runs/$3/" 2>/dev/null || true
+  for f in build-report.md review-report.md docs-report.md; do
+    [ -f "$2/.kit/$f" ] && cp -a "$2/.kit/$f" "$1/.kit/runs/$3/" 2>/dev/null
+  done
+  exclude_add "/.kit/" 2>/dev/null || true
+}
+
 cmd_merge() {
   need_repo
   local raw="${1:-}"; [ -n "$raw" ] || die "Usage: kit merge <name>"
@@ -245,6 +260,7 @@ Nothing was merged. Claude must update the work copy with the latest project fir
     say "    Running scripts/after-merge.sh ..."
     ( cd "$main" && ./scripts/after-merge.sh ) || warn "scripts/after-merge.sh reported a problem (see above)."
   fi
+  keep_runs "$main" "$wt" "$name"
   git -C "$main" worktree unlock "$wt" >/dev/null 2>&1
   git -C "$main" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
   git -C "$main" worktree prune
@@ -252,6 +268,7 @@ Nothing was merged. Claude must update the work copy with the latest project fir
 
   say ""
   say "MERGED: '$name' is now in the real project (version $hash)."
+  [ -f "$main/.kit/runs/$name/usage.tsv" ] && say "Luna runs (logs in .kit/runs/$name/):" && sed 's/^/    /' "$main/.kit/runs/$name/usage.tsv"
   say "UNDO: ask Claude \"undo the last feature\" (it will run: git revert -m 1 $hash)"
 }
 
@@ -264,6 +281,7 @@ cmd_discard() {
   [ -d "$wt" ] || die "No work copy named '$name'."
   case "$(pwd -P)/" in "$(readlink -f "$wt")/"*) die "Leave the work copy first (ExitWorktree keep).";; esac
   branch="$(git -C "$wt" symbolic-ref --short -q HEAD || true)"
+  keep_runs "$main" "$wt" "$name"
   git -C "$main" worktree unlock "$wt" >/dev/null 2>&1
   git -C "$main" worktree remove --force "$wt" >/dev/null 2>&1 || rm -rf "$wt"
   git -C "$main" worktree prune
@@ -341,6 +359,36 @@ cmd_docs_build() {
   fi
 }
 
+# Rebuild the docs website, then save only the docs folder (other changes stay unsaved).
+cmd_docs_update() {
+  need_repo
+  in_workcopy && die "In a work copy /feature saves the docs. Run kit docs update in the real project."
+  local msg="${1:-}" root; root="$(here_root)"; load_project_conf "$root"
+  cd "$root" || exit 1
+  cmd_docs_build
+  git add -A -- "$DOCS_DIR"
+  refuse_bad_staged "$DOCS_DIR"
+  if git diff --cached --quiet -- "$DOCS_DIR"; then say "No docs changes to save."; return 0; fi
+  if [ -z "$msg" ]; then
+    # Default message from the changed pages' titles: "docs: update Context, Operations"
+    local f t titles=()
+    while IFS= read -r f; do
+      case "$f" in *.md|*.mdx) ;; *) continue;; esac
+      t=""; [ -f "$f" ] && t="$(head -n 15 "$f" | sed -n 's/^title:[[:space:]]*//p' | head -n1 | sed -E "s/^[\"']//; s/[\"'][[:space:]]*\$//")"
+      [ -n "$t" ] || { t="${f##*/}"; t="${t%.*}"; }
+      titles+=("$t")
+    done < <(git diff --cached --name-only -- "$DOCS_DIR")
+    if [ ${#titles[@]} -eq 0 ]; then msg="docs: update website files"
+    elif [ ${#titles[@]} -le 3 ]; then msg="docs: update $(printf '%s, ' "${titles[@]}" | sed 's/, $//')"
+    else msg="docs: update $(printf '%s, ' "${titles[@]:0:3}" | sed 's/, $//') and $(( ${#titles[@]} - 3 )) more"
+    fi
+  fi
+  local n; n="$(git diff --cached --name-only -- "$DOCS_DIR" | wc -l | tr -d ' ')"
+  git commit -q -m "$msg" -- "$DOCS_DIR" || die "Save failed (git commit). Is git user.name/user.email set? Run: kit doctor"
+  say "SAVED: $(git rev-parse --short HEAD) - $msg ($n files)"
+  say "Docs online: $(cmd_docs_url)"
+}
+
 cmd_docs_url() {
   local ip; ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo "http://${ip:-localhost}:$(docs_port)"
@@ -389,9 +437,10 @@ cmd_docs() {
   case "$sub" in
     init) cmd_docs_init "$@";;
     build) cmd_docs_build "$@";;
+    update) cmd_docs_update "$@";;
     service) cmd_docs_service "$@";;
     url) cmd_docs_url;;
-    *) die "Usage: kit docs init \"Title\" | build | service [port] | url";;
+    *) die "Usage: kit docs init \"Title\" | build | update [\"msg\"] | service [port] | url";;
   esac
 }
 
@@ -434,6 +483,7 @@ kit - homelab agent kit helper (normally used by Claude, not typed by you)
   kit update                 update the kit from GitHub and re-install
   kit status                 list work copies in progress
   kit docs url               show the docs website address
+  kit docs update ["msg"]    after editing docs pages: rebuild the website and save them
 
 Used by Claude during /feature and /init-project:
   kit start <name> [--anyway]   create a work copy (branch feature/<name>)
@@ -444,7 +494,7 @@ Used by Claude during /feature and /init-project:
   kit discard <name>            delete a work copy (real project untouched)
   kit env-keys                  list .env key names (never values)
   kit env-ensure KEY            add an empty KEY= line to .env
-  kit docs init "Title" | build | service [port] | url
+  kit docs init "Title" | build | update ["msg"] | service [port] | url
 EOF
 }
 

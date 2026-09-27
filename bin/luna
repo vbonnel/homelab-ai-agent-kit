@@ -6,7 +6,8 @@
 #   luna docs   <name>                  update the docs website pages for the feature
 #
 # The OpenAI key is read from the REAL project's .env (LUNA_OPENAI_API_KEY or OPENAI_API_KEY).
-# Only Luna's final report is printed; the full run log is kept in .kit/runs/.
+# Only Luna's final report is printed; the full run log is kept in .kit/runs/
+# (copied to the real project's .kit/runs/<name>/ by kit merge/discard).
 set -uo pipefail
 
 KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -62,6 +63,9 @@ fi
 TARGET="$(cat .kit/target-branch 2>/dev/null || echo main)"
 BASE="$(git merge-base HEAD "$TARGET" 2>/dev/null || cat .kit/start-commit 2>/dev/null)"
 DOCS_DIR="docs"; [ -f .agentkit ] && v="$(sed -n 's/^DOCS_DIR=//p' .agentkit | tail -n1)" && [ -n "$v" ] && DOCS_DIR="$v"
+# the code map (a big generated snapshot) is kept out of Luna's diffs: it would ride along on every step
+CODEMAP="codebase.md"; [ -f .agentkit ] && v="$(sed -n 's/^CODEMAP=//p' .agentkit | tail -n1)" && [ -n "$v" ] && CODEMAP="$v"
+DIFF_EXCLUDES="':(exclude)$CODEMAP' ':(exclude)*.lock' ':(exclude)package-lock.json'"
 
 # --- build the prompt from the template ---
 mkdir -p .kit/runs
@@ -84,6 +88,8 @@ python_free_render() { # replace {{VARS}} without needing python
     line="${line//\{\{SPEC\}\}/$SPEC}"
     line="${line//\{\{BASE\}\}/$BASE}"
     line="${line//\{\{DOCS_DIR\}\}/$DOCS_DIR}"
+    line="${line//\{\{CODEMAP\}\}/$CODEMAP}"
+    line="${line//\{\{DIFF_EXCLUDES\}\}/$DIFF_EXCLUDES}"
     line="${line//\{\{DATE\}\}/$(date +%Y-%m-%d)}"
     printf '%s\n' "$line"
   done < "$tpl"
@@ -114,7 +120,12 @@ if [ $RC -ne 0 ] || [ ! -s "$REPORT" ]; then
   exit 1
 fi
 
-echo "=== LUNA $mode REPORT (${SECS}s) - saved in $ROOT/$REPORT ==="
+# token count as Codex prints it at the end of the log ("tokens used" then the number)
+TOKENS="$(grep -iA1 'tokens used' "$LOG" | grep -Eo '[0-9][0-9,]*' | tail -n1 | tr -d ,)"
+printf '%s\t%s\t%s\t%ss\t%s\n' "$STAMP" "$name" "$mode" "$SECS" "${TOKENS:-?}" >> .kit/runs/usage.tsv
+TOK_TXT=""; [ -n "$TOKENS" ] && TOK_TXT=", $(printf "%'d" "$TOKENS" 2>/dev/null || echo "$TOKENS") tokens"
+
+echo "=== LUNA $mode REPORT (${SECS}s${TOK_TXT}) - saved in $ROOT/$REPORT ==="
 cat "$REPORT"
 echo "=== END OF REPORT ==="
 

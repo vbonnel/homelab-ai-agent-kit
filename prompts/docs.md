@@ -6,8 +6,9 @@ A feature was just finished. Read:
 1. The spec: {{SPEC}}
 2. What changed in the code:
      git diff --stat {{BASE}}..HEAD
-     git diff {{BASE}}..HEAD -- . ':(exclude){{DOCS_DIR}}'
+     git diff {{BASE}}..HEAD -- . ':(exclude){{DOCS_DIR}}' {{DIFF_EXCLUDES}}
 3. The current pages in {{DOCS_DIR}}/src/content/docs/
+Do not open {{CODEMAP}} (a big generated snapshot of the code).
 
 Then:
 - Update only the pages this feature affects (for example getting-started.md,

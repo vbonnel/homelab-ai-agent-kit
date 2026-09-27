@@ -6,6 +6,10 @@ Read these first:
 1. AGENTS.md in this folder: the project's rules. Follow them strictly.
 2. The spec: {{SPEC}}
 
+Do not open {{CODEMAP}} (a big generated snapshot of the code): search and read
+the real files you need instead (grep, sed -n). Every file you read is re-sent
+on each later step, so read only what you need.
+
 {{NOTES_BLOCK}}
 
 What to do:

@@ -8,7 +8,7 @@ More background: <links to the owner's notes, e.g. 1_PROJECT_BRIEF.md, 2_MAINTEN
 
 ## Where things are
 - `<folder or file>` - <what it is>
-- Code map: `<codebase.md>` <how to refresh it, e.g. `npx ai-digest`, or "none">
+- Code map: `<codebase.md>` <how to refresh it, e.g. `npx ai-digest`, or "none">. It is a snapshot for chat tools: AI agents must not read it whole, search the real files instead
 - Docs website source: `docs/src/content/docs/`
 - Feature plans: `specs/`
 

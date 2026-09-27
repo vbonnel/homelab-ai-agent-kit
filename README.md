@@ -96,6 +96,7 @@ kit update
 | `kit doctor` | checks that everything is installed and configured |
 | `kit status` | lists work copies in progress |
 | `kit docs url` | shows the docs website address |
+| `kit docs update ["msg"]` | after editing docs pages by hand: rebuilds the docs website and saves only the docs folder (message made from the page titles if you give none) |
 | `kit update` | updates the kit from GitHub |
 
 ## What's in this kit

@@ -6,8 +6,9 @@ Read these first:
 2. The spec that was implemented: {{SPEC}}
 3. The changes to review. Run:
      git diff --stat {{BASE}}..HEAD
-     git diff {{BASE}}..HEAD
-   and open any file you need for context.
+     git diff {{BASE}}..HEAD -- . {{DIFF_EXCLUDES}}
+   and open any file you need for context. Do not open {{CODEMAP}} (a big
+   generated snapshot): read only the real files you need.
 
 Check, in this order:
 1. Correctness: does the code do what the spec says? Go through every item in
