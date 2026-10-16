@@ -39,3 +39,26 @@ project on this machine.
 - GPT-6 Luna does the building, reviewing and docs writing through the
   `luna` command. Let Luna write the code; step in yourself only for small
   final fixes.
+- Specialist delegation (`consult`): when the owner explicitly asks for a second
+  opinion or delegates a task to an external model (e.g. "Ask Gemini to review
+  this change" or "Get a second opinion from an Anthropic/OpenAI model on this
+  bug"), or enables delegation for a session scope, use the `consult` command:
+  - External API calls must **never** happen by default. Only run `consult`
+    when requested by the owner (`--authorized-once`) or within an owner-enabled
+    session scope (`consult scope enable --providers <list> --tasks <list>`).
+  - Supported tasks: `consult review`, `consult investigate`, `consult tests`,
+    `consult compare`, `consult ask`.
+  - Pass `--provider anthropic|openai|gemini` and/or `--model <model>` if the
+    owner specifies one, or `--orchestrator claude` to let `consult` pick from
+    the configured, approved set.
+  - Supply only relevant context (`--diff`, `--spec specs/<name>.md`,
+    `--file path[:start-end]`, `--test-log`, `--question "..."`). Never pass
+    `.env` or secrets.
+  - External models are read-only advisors. You remain responsible for
+    evaluating their advice against `AGENTS.md` and the codebase, summarizing
+    what you agree or disagree with for the owner, and validating any resulting
+    changes with `kit test`.
+  - If an external provider is unavailable (`CONSULT UNAVAILABLE`), report the
+    failure in one plain sentence and continue the normal workflow without
+    delegation.
+

@@ -134,6 +134,8 @@ site serves a built folder. If no, write the restart command in AGENTS.md.
 - Done. The docs website address.
 - If the OpenAI key is empty: "Put your OpenAI key in .env: `nano .env`,
   line `OPENAI_API_KEY=sk-...` (tip: one key per container, with a monthly
-  spending limit)". Never ask for it in chat.
+  spending limit). Optional: add `GEMINI_API_KEY=...` or `ANTHROPIC_API_KEY=...`
+  if you want to delegate second-opinion reviews or investigations (`consult`)."
+  Never ask for keys in chat.
 - How to start: `/feature <what you want>`.
 - Follow-ups (only if any): 1-5 short bullets.

@@ -197,7 +197,7 @@ cmd_diff() {
 keep_runs() { # $1=main $2=work copy $3=name
   [ -d "$2/.kit/runs" ] || return 0
   mkdir -p "$1/.kit/runs/$3" && cp -a "$2/.kit/runs/." "$1/.kit/runs/$3/" 2>/dev/null || true
-  for f in build-report.md review-report.md docs-report.md; do
+  for f in build-report.md review-report.md docs-report.md consult-report.md; do
     [ -f "$2/.kit/$f" ] && cp -a "$2/.kit/$f" "$1/.kit/runs/$3/" 2>/dev/null
   done
   exclude_add "/.kit/" 2>/dev/null || true
@@ -471,8 +471,10 @@ cmd_doctor() {
   chk "node installed" "command -v node" "run install.sh"
   chk "Claude Code installed" "command -v claude" "run install.sh"
   chk "Codex CLI installed (for GPT-6 Luna)" "command -v codex" "run install.sh"
+  chk "consult CLI linked" "command -v consult" "run install.sh"
   chk "/feature skill linked" "test -f $HOME/.claude/skills/feature/SKILL.md" "run install.sh"
   chk "/init-project skill linked" "test -f $HOME/.claude/skills/init-project/SKILL.md" "run install.sh"
+  chk "/consult skill linked" "test -f $HOME/.claude/skills/consult/SKILL.md" "run install.sh"
   if in_repo; then
     local main; main="$(main_root)"
     say "Project: $main"
@@ -483,6 +485,7 @@ cmd_doctor() {
     ( cd "$main" && load_project_conf "$main" && [ -f "$main/$DOCS_DIR/package.json" ] ) && say "  Docs: $(cd "$main" && cmd_docs_url)"
   fi
   say "Luna: model=${LUNA_MODEL:-gpt-6-luna} sandbox=${LUNA_SANDBOX:-on}"
+  say "Consult (opt-in delegation): providers=${CONSULT_PROVIDERS:-anthropic,openai,gemini} default=${CONSULT_DEFAULT_PROVIDER:-gemini}"
   [ $bad -eq 0 ] && say "All good." || say "Some checks failed (see [!] lines)."
   return $bad
 }
@@ -499,10 +502,11 @@ kit - homelab agent kit helper (normally used by Claude, not typed by you)
   kit doctor                 check that everything is installed
   kit update                 update the kit from GitHub and re-install
   kit status                 list work copies in progress
+  kit consult ...            delegate a read-only task (review, investigate, tests, compare, ask)
   kit docs url               show the docs website address
   kit docs update ["msg"]    after editing docs pages: rebuild the website and save them
 
-Used by Claude during /feature and /init-project:
+Used by Claude / Codex during /feature, /consult and /init-project:
   kit start <name> [--anyway]   create a work copy (branch feature/<name>)
   kit save "msg" [--main]       save (commit) - refuses secrets and huge files
   kit test                      run scripts/test.sh, keep output in .kit/
@@ -512,6 +516,7 @@ Used by Claude during /feature and /init-project:
   kit env-keys                  list .env key names (never values)
   kit env-ensure KEY            add an empty KEY= line to .env
   kit docs init "Title" | build | update ["msg"] | service [port] | url
+  consult <task> [options]      delegate to Anthropic, OpenAI, or Gemini (see: consult help)
 EOF
 }
 
@@ -526,6 +531,7 @@ case "$sub" in
   discard) cmd_discard "$@";;
   env-keys) cmd_env_keys "$@";;
   env-ensure) cmd_env_ensure "$@";;
+  consult) exec "$KIT_DIR/bin/consult" "$@";;
   docs) cmd_docs "$@";;
   doctor) cmd_doctor "$@";;
   update) cmd_update "$@";;

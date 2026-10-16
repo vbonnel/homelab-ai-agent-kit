@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# consult - delegate a read-only specialist task (review, investigate, tests, compare, ask)
+# to an external model via Anthropic, OpenAI, or Google Gemini APIs.
+#
+# External API calls never happen by default: they require either an explicit
+# one-off authorization (--authorized-once) or an active session scope
+# (consult scope enable ...).
+set -uo pipefail
+
+KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+export KIT_CONF="${KIT_CONF:-$HOME/.config/agent-kit/config}"
+
+command -v node >/dev/null 2>&1 || {
+  echo "CONSULT ERROR: Node.js is not installed. Run /opt/agent-kit/install.sh" >&2
+  exit 1
+}
+
+exec node "$KIT_DIR/lib/consult.mjs" "$@"

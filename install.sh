@@ -11,6 +11,7 @@ set -uo pipefail
 
 KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 CLAUDE_DIR="$HOME/.claude"
+CODEX_DIR="$HOME/.codex"
 CONF_DIR="$HOME/.config/agent-kit"
 QUICK=0; UNINSTALL=0
 for a in "$@"; do case "$a" in --quick) QUICK=1;; --uninstall) UNINSTALL=1;; esac; done
@@ -27,12 +28,15 @@ SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 # ------------------------------------------------------------- uninstall ---
 if [ $UNINSTALL -eq 1 ]; then
   step "Removing the agent kit"
-  for s in feature init-project; do
+  for s in feature init-project consult; do
     [ -L "$CLAUDE_DIR/skills/$s" ] && rm "$CLAUDE_DIR/skills/$s" && ok "removed skill /$s"
   done
-  for b in kit luna; do
+  for b in kit luna consult; do
     [ -L "/usr/local/bin/$b" ] && $SUDO rm "/usr/local/bin/$b" && ok "removed command $b"
   done
+  if [ -L "$CODEX_DIR/AGENTS.md" ]; then
+    rm "$CODEX_DIR/AGENTS.md" && ok "removed Codex global rules link (~/.codex/AGENTS.md)"
+  fi
   if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
     grep -vxF "$IMPORT_LINE" "$CLAUDE_DIR/CLAUDE.md" > "$CLAUDE_DIR/CLAUDE.md.tmp" && mv "$CLAUDE_DIR/CLAUDE.md.tmp" "$CLAUDE_DIR/CLAUDE.md"
     ok "removed kit rules from ~/.claude/CLAUDE.md"
@@ -90,9 +94,9 @@ if [ $QUICK -eq 0 ]; then
 fi
 
 # ------------------------------------------------------- 5. commands -----
-step "5/7 Commands: kit, luna"
+step "5/7 Commands: kit, luna, consult"
 chmod +x "$KIT_DIR/bin/"* "$KIT_DIR/install.sh" 2>/dev/null
-for b in kit luna; do
+for b in kit luna consult; do
   $SUDO ln -sfn "$KIT_DIR/bin/$b" "/usr/local/bin/$b" && ok "$b -> /usr/local/bin/$b" || fail "could not link $b"
 done
 # make ~/.local/bin (where Claude Code / Codex may live) available in every shell
@@ -104,10 +108,10 @@ for b in claude codex; do
   if ! command -v "$b" >/dev/null 2>&1 && [ -x "$HOME/.local/bin/$b" ]; then $SUDO ln -sfn "$HOME/.local/bin/$b" "/usr/local/bin/$b"; fi
 done
 
-# ----------------------------------------------- 6. claude config -------
-step "6/7 Claude Code setup: skills, rules, permissions"
-mkdir -p "$CLAUDE_DIR/skills" "$CONF_DIR"
-for s in feature init-project; do
+# ----------------------------------------------- 6. claude & codex config -
+step "6/7 Claude Code & Codex setup: skills, rules, permissions, delegation"
+mkdir -p "$CLAUDE_DIR/skills" "$CODEX_DIR" "$CONF_DIR"
+for s in feature init-project consult; do
   target="$CLAUDE_DIR/skills/$s"
   if [ -e "$target" ] && [ ! -L "$target" ]; then mv "$target" "$target.bak-$(date +%s)"; warn "moved your old '$s' skill aside"; fi
   ln -sfn "$KIT_DIR/claude/skills/$s" "$target" && ok "skill /$s"
@@ -117,6 +121,11 @@ if grep -qxF "$IMPORT_LINE" "$CLAUDE_DIR/CLAUDE.md"; then ok "global rules alrea
 else
   { echo "$IMPORT_LINE"; echo; cat "$CLAUDE_DIR/CLAUDE.md"; } > "$CLAUDE_DIR/CLAUDE.md.tmp" && mv "$CLAUDE_DIR/CLAUDE.md.tmp" "$CLAUDE_DIR/CLAUDE.md"
   ok "global rules linked in ~/.claude/CLAUDE.md"
+fi
+if [ ! -e "$CODEX_DIR/AGENTS.md" ] || [ -L "$CODEX_DIR/AGENTS.md" ]; then
+  ln -sfn "$KIT_DIR/codex/AGENTS.md" "$CODEX_DIR/AGENTS.md" && ok "global Codex rules linked in ~/.codex/AGENTS.md"
+else
+  ok "kept custom ~/.codex/AGENTS.md"
 fi
 if command -v node >/dev/null; then
   node "$KIT_DIR/lib/merge-settings.mjs" "$KIT_DIR/claude/settings.json" "$CLAUDE_DIR/settings.json" >/dev/null \
@@ -133,8 +142,57 @@ LUNA_EFFORT_DOCS=medium
 # on = Codex runs Luna in its own sandbox; off = no extra sandbox (the container is the boundary)
 LUNA_SANDBOX=auto
 DOCS_PORT=4321
+
+# Specialist delegation (consult) - opt-in only
+CONSULT_PROVIDERS=anthropic,openai,gemini
+CONSULT_DEFAULT_PROVIDER=gemini
+CONSULT_MODEL_ANTHROPIC=claude-sonnet-4-5
+CONSULT_MODEL_OPENAI=gpt-5
+CONSULT_MODEL_GEMINI=gemini-2.5-pro
+CONSULT_ALLOWED_MODELS=claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-6-luna,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash
+CONSULT_TIMEOUT_SECS=120
+CONSULT_MAX_INPUT_BYTES=120000
+CONSULT_MAX_OUTPUT_TOKENS=4096
+CONSULT_MAX_COST_CALL_USD=0.50
+CONSULT_MAX_COST_DAILY_USD=5.00
+CONSULT_MAX_CALLS_SESSION=15
 EOF
   ok "created $CONF_DIR/config"
+else
+  # Non-destructively append any new default CONSULT_* settings missing on existing containers
+  added_conf=0
+  ensure_conf() {
+    local k="$1" v="$2"
+    if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${k}[[:space:]]*=" "$CONF_DIR/config"; then
+      [ $added_conf -eq 0 ] && printf '\n# Specialist delegation (consult) - added by kit update\n' >> "$CONF_DIR/config"
+      printf '%s=%s\n' "$k" "$v" >> "$CONF_DIR/config"
+      added_conf=$((added_conf + 1))
+    fi
+  }
+  ensure_conf CONSULT_PROVIDERS "anthropic,openai,gemini"
+  ensure_conf CONSULT_DEFAULT_PROVIDER "gemini"
+  ensure_conf CONSULT_MODEL_ANTHROPIC "claude-sonnet-4-5"
+  ensure_conf CONSULT_MODEL_OPENAI "gpt-5"
+  ensure_conf CONSULT_MODEL_GEMINI "gemini-2.5-pro"
+  ensure_conf CONSULT_ALLOWED_MODELS "claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-6-luna,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash"
+  ensure_conf CONSULT_TIMEOUT_SECS "120"
+  ensure_conf CONSULT_MAX_INPUT_BYTES "120000"
+  ensure_conf CONSULT_MAX_OUTPUT_TOKENS "4096"
+  ensure_conf CONSULT_MAX_COST_CALL_USD "0.50"
+  ensure_conf CONSULT_MAX_COST_DAILY_USD "5.00"
+  ensure_conf CONSULT_MAX_CALLS_SESSION "15"
+  [ $added_conf -gt 0 ] && ok "updated $CONF_DIR/config with $added_conf new default setting(s) (existing settings kept)" || ok "existing $CONF_DIR/config kept"
+fi
+if [ ! -f "$CONF_DIR/secrets.env" ]; then
+  cat > "$CONF_DIR/secrets.env" <<'EOF'
+# Optional container-wide API keys for specialist delegation (consult).
+# Keys in a project's own .env override values here. Keep this file chmod 600.
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+EOF
+  chmod 600 "$CONF_DIR/secrets.env"
+  ok "created $CONF_DIR/secrets.env (chmod 600)"
 fi
 if grep -q '^LUNA_SANDBOX=auto' "$CONF_DIR/config" && command -v codex >/dev/null; then
   if timeout 20 codex sandbox linux -- /bin/true >/dev/null 2>&1 || timeout 20 codex sandbox linux /bin/true >/dev/null 2>&1; then

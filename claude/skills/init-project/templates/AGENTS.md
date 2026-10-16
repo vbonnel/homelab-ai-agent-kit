@@ -39,3 +39,15 @@ applied with ...". Always ask the owner first and back up first: `<backup comman
 ## Conventions
 - <language and style notes, e.g. "Python 3.11, black formatting, plain
   functions, no new frameworks without asking">
+
+## Specialist delegation (`consult`, opt-in only)
+- External API calls (`consult`) are off by default. Only run `consult` when the
+  owner explicitly requests a delegation (`--authorized-once`) or enables a
+  session scope (`consult scope enable ...`).
+- Tasks: `consult review | investigate | tests | compare | ask` (supports
+  `--provider anthropic|openai|gemini`, `--model <name>`, `--diff`, `--spec`,
+  `--file path[:start-end]`, `--test-log`, `--question "..."`).
+- External models are read-only advisors. Critically verify their suggestions
+  against this file and the codebase, and validate any changes with `scripts/test.sh`.
+  If a provider is unavailable, report the failure in one line and continue without it.
+

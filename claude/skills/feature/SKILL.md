@@ -27,6 +27,13 @@ owner is not a developer: short plain messages, no git jargon.
   "Plan ready", "Luna is building (round 1)...", "Tests passed", "Review passed".
 - Long commands (`luna ...`, `kit test`, `kit merge`) can take many minutes:
   run them with the Bash `timeout` set to 3600000.
+- Specialist delegation (`consult`): never call external APIs (`consult`) by
+  default. If the owner explicitly asks for an external review, bug investigation,
+  test suggestions, or approach comparison—or has enabled a session scope with
+  `consult scope enable`—run `consult <review|investigate|tests|compare|ask>`
+  with the relevant `--spec`, `--diff`, `--file`, or `--test-log` flags. Evaluate
+  its advice critically yourself; if a provider is unavailable, report it in one
+  line and continue the workflow normally.
 - Never weaken or delete tests. Never read `.env`. Never touch a real database
   or real outside services (see AGENTS.md).
 
