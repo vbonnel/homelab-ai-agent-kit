@@ -495,11 +495,22 @@ cmd_update() {
   "$KIT_DIR/install.sh" --quick
 }
 
+cmd_version() {
+  local info
+  info="$(git -C "$KIT_DIR" log -1 --format='%h %cd' --date=short 2>/dev/null || true)"
+  if [ -n "$info" ]; then
+    say "kit version $info"
+  else
+    say "kit version unknown"
+  fi
+}
+
 cmd_help() {
   cat <<EOF
 kit - homelab agent kit helper (normally used by Claude, not typed by you)
 
   kit doctor                 check that everything is installed
+  kit version                show installed kit version
   kit update                 update the kit from GitHub and re-install
   kit status                 list work copies in progress
   kit consult ...            delegate a read-only task (review, investigate, tests, compare, ask)
@@ -535,6 +546,7 @@ case "$sub" in
   docs) cmd_docs "$@";;
   doctor) cmd_doctor "$@";;
   update) cmd_update "$@";;
+  version|-v|--version) cmd_version "$@";;
   help|-h|--help) cmd_help;;
   *) die "Unknown command: $sub (see: kit help)";;
 esac

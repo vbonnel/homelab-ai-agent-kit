@@ -34,6 +34,15 @@ if [ $UNINSTALL -eq 1 ]; then
   for b in kit luna consult; do
     [ -L "/usr/local/bin/$b" ] && $SUDO rm "/usr/local/bin/$b" && ok "removed command $b"
   done
+  if [ -f /etc/profile.d/agent-kit.sh ]; then
+    $SUDO rm -f /etc/profile.d/agent-kit.sh && ok "removed /etc/profile.d/agent-kit.sh"
+  fi
+  if [ -f /etc/bash.bashrc ]; then
+    $SUDO sed -i '/agent-kit\.sh/d' /etc/bash.bashrc 2>/dev/null || true
+  fi
+  if [ -f "$HOME/.bashrc" ]; then
+    sed -i '/agent-kit\.sh/d' "$HOME/.bashrc" 2>/dev/null || true
+  fi
   if [ -L "$CODEX_DIR/AGENTS.md" ]; then
     rm "$CODEX_DIR/AGENTS.md" && ok "removed Codex global rules link (~/.codex/AGENTS.md)"
   fi
@@ -99,9 +108,16 @@ chmod +x "$KIT_DIR/bin/"* "$KIT_DIR/install.sh" 2>/dev/null
 for b in kit luna consult; do
   $SUDO ln -sfn "$KIT_DIR/bin/$b" "/usr/local/bin/$b" && ok "$b -> /usr/local/bin/$b" || fail "could not link $b"
 done
-# make ~/.local/bin (where Claude Code / Codex may live) available in every shell
+# make /usr/local/bin, /usr/local/sbin and ~/.local/bin available in every shell (including non-login pct enter / lxc-attach)
 if [ -w /etc/profile.d ] || [ -n "$SUDO" ]; then
-  echo 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH";; esac' | $SUDO tee /etc/profile.d/agent-kit.sh >/dev/null
+  cat <<'EOF' | $SUDO tee /etc/profile.d/agent-kit.sh >/dev/null
+case ":$PATH:" in *":/usr/local/bin:"*) ;; *) export PATH="/usr/local/bin:$PATH";; esac
+case ":$PATH:" in *":/usr/local/sbin:"*) ;; *) export PATH="/usr/local/sbin:$PATH";; esac
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH";; esac
+EOF
+fi
+if [ -w /etc/bash.bashrc ] || [ -n "$SUDO" ]; then
+  grep -qs 'agent-kit.sh' /etc/bash.bashrc 2>/dev/null || echo '[ -f /etc/profile.d/agent-kit.sh ] && . /etc/profile.d/agent-kit.sh' | $SUDO tee -a /etc/bash.bashrc >/dev/null
 fi
 grep -qs 'agent-kit.sh' "$HOME/.bashrc" || echo '[ -f /etc/profile.d/agent-kit.sh ] && . /etc/profile.d/agent-kit.sh' >> "$HOME/.bashrc"
 for b in claude codex; do

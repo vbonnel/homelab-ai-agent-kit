@@ -501,3 +501,12 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
     rmSync(fakeHome, { recursive: true, force: true });
   }
 });
+
+test('7. kit version command and flags (--version, -v, version)', () => {
+  const kitBin = join(KIT_DIR, 'bin', 'kit');
+  for (const flag of ['--version', '-v', 'version']) {
+    const out = execFileSync('bash', [kitBin, flag], { encoding: 'utf8' }).trim();
+    assert.match(out, /^kit version [a-f0-9]+ \d{4}-\d{2}-\d{2}$/);
+  }
+});
+
