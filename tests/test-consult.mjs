@@ -210,6 +210,9 @@ function createTempProject(extraLines = []) {
     [
       'CONSULT_PROVIDERS=anthropic,openai,gemini',
       'CONSULT_DEFAULT_PROVIDER=gemini',
+      'CONSULT_MODEL_ANTHROPIC=claude-sonnet-4-5',
+      'CONSULT_MODEL_OPENAI=gpt-5',
+      'CONSULT_MODEL_GEMINI=gemini-2.5-pro',
       `CONSULT_API_URL_ANTHROPIC=${baseUrl}/anthropic`,
       `CONSULT_API_URL_OPENAI=${baseUrl}/openai`,
       `CONSULT_API_URL_GEMINI=${baseUrl}/gemini`,
@@ -386,7 +389,10 @@ test('4. Session scope enable, filtering, call limit enforcement, and disable', 
 });
 
 test('5. Refuses reading .env via --file and enforces model allowlist, cost limits, and graceful failure', async () => {
-  const { dir, repoDir, kitConfPath } = createTempProject(['CONSULT_TIMEOUT_SECS=1']);
+  const { dir, repoDir, kitConfPath } = createTempProject([
+    'CONSULT_TIMEOUT_SECS=1',
+    'CONSULT_ALLOWED_MODELS=claude-sonnet-4-5,gpt-5,gemini-2.5-pro',
+  ]);
   try {
     let rc = await runCli(
       ['ask', '--authorized-once', '--provider', 'gemini', '--file', '.env', '--question', 'check'],
@@ -399,6 +405,18 @@ test('5. Refuses reading .env via --file and enforces model allowlist, cost limi
       { kitDir: KIT_DIR, kitConfPath, cwd: repoDir }
     );
     assert.equal(rc, 2);
+
+    // When CONSULT_ALLOWED_MODELS is blank, unlisted custom models are permitted
+    const allowAnyConf = join(dir, 'config-allow-any');
+    writeFileSync(
+      allowAnyConf,
+      readFileSync(kitConfPath, 'utf8') + LF + 'CONSULT_ALLOWED_MODELS=' + LF
+    );
+    rc = await runCli(
+      ['ask', '--authorized-once', '--provider', 'openai', '--model', 'custom-any-model', '--file', 'app.js', '--question', 'check'],
+      { kitDir: KIT_DIR, kitConfPath: allowAnyConf, cwd: repoDir }
+    );
+    assert.equal(rc, 0);
 
     const failConf = join(dir, 'config-fail');
     writeFileSync(
@@ -449,6 +467,7 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
       join(confDir, 'config'),
       [
         '# Custom user config',
+        'LUNA_MODEL=gpt-6-luna',
         'CUSTOM_SETTING=true',
         'DOCS_PORT=9999',
         'CONSULT_DEFAULT_PROVIDER=anthropic',
@@ -479,6 +498,7 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
     });
 
     const updatedConfig = readFileSync(join(confDir, 'config'), 'utf8');
+    assert.ok(!updatedConfig.includes('LUNA_MODEL'));
     assert.ok(updatedConfig.includes('CUSTOM_SETTING=true'));
     assert.ok(updatedConfig.includes('DOCS_PORT=9999'));
     assert.ok(updatedConfig.includes('CONSULT_DEFAULT_PROVIDER=anthropic'));

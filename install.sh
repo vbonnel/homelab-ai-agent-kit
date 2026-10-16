@@ -156,10 +156,10 @@ DOCS_PORT=4321
 # Specialist delegation (consult) - opt-in only
 CONSULT_PROVIDERS=anthropic,openai,gemini
 CONSULT_DEFAULT_PROVIDER=gemini
-CONSULT_MODEL_ANTHROPIC=claude-sonnet-4-5
-CONSULT_MODEL_OPENAI=gpt-5
-CONSULT_MODEL_GEMINI=gemini-2.5-pro
-CONSULT_ALLOWED_MODELS=claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash
+CONSULT_MODEL_ANTHROPIC=
+CONSULT_MODEL_OPENAI=
+CONSULT_MODEL_GEMINI=
+CONSULT_ALLOWED_MODELS=
 CONSULT_TIMEOUT_SECS=120
 CONSULT_MAX_INPUT_BYTES=120000
 CONSULT_MAX_OUTPUT_TOKENS=4096
@@ -169,6 +169,13 @@ CONSULT_MAX_CALLS_SESSION=15
 EOF
   ok "created $CONF_DIR/config"
 else
+  # Clean up legacy Luna and default prefilled model settings from existing config
+  sed -i '/^LUNA_/d' "$CONF_DIR/config" 2>/dev/null || true
+  sed -i '/Codex runs Luna/d' "$CONF_DIR/config" 2>/dev/null || true
+  sed -i 's/^CONSULT_MODEL_ANTHROPIC=claude-sonnet-4-5$/CONSULT_MODEL_ANTHROPIC=/' "$CONF_DIR/config" 2>/dev/null || true
+  sed -i 's/^CONSULT_MODEL_OPENAI=gpt-5$/CONSULT_MODEL_OPENAI=/' "$CONF_DIR/config" 2>/dev/null || true
+  sed -i 's/^CONSULT_MODEL_GEMINI=gemini-2.5-pro$/CONSULT_MODEL_GEMINI=/' "$CONF_DIR/config" 2>/dev/null || true
+  sed -i 's/^CONSULT_ALLOWED_MODELS=claude-sonnet-4-5.*/CONSULT_ALLOWED_MODELS=/' "$CONF_DIR/config" 2>/dev/null || true
   # Non-destructively append any new default CONSULT_* settings missing on existing containers
   added_conf=0
   ensure_conf() {
@@ -181,10 +188,10 @@ else
   }
   ensure_conf CONSULT_PROVIDERS "anthropic,openai,gemini"
   ensure_conf CONSULT_DEFAULT_PROVIDER "gemini"
-  ensure_conf CONSULT_MODEL_ANTHROPIC "claude-sonnet-4-5"
-  ensure_conf CONSULT_MODEL_OPENAI "gpt-5"
-  ensure_conf CONSULT_MODEL_GEMINI "gemini-2.5-pro"
-  ensure_conf CONSULT_ALLOWED_MODELS "claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash"
+  ensure_conf CONSULT_MODEL_ANTHROPIC ""
+  ensure_conf CONSULT_MODEL_OPENAI ""
+  ensure_conf CONSULT_MODEL_GEMINI ""
+  ensure_conf CONSULT_ALLOWED_MODELS ""
   ensure_conf CONSULT_TIMEOUT_SECS "120"
   ensure_conf CONSULT_MAX_INPUT_BYTES "120000"
   ensure_conf CONSULT_MAX_OUTPUT_TOKENS "4096"

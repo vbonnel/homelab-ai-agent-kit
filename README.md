@@ -177,10 +177,10 @@ DOCS_PORT=4321
 # Specialist delegation (consult) - opt-in only
 CONSULT_PROVIDERS=anthropic,openai,gemini
 CONSULT_DEFAULT_PROVIDER=gemini
-CONSULT_MODEL_ANTHROPIC=claude-sonnet-4-5
-CONSULT_MODEL_OPENAI=gpt-5
-CONSULT_MODEL_GEMINI=gemini-2.5-pro
-CONSULT_ALLOWED_MODELS=claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash
+CONSULT_MODEL_ANTHROPIC=             # e.g. claude-sonnet-4-5
+CONSULT_MODEL_OPENAI=                # e.g. gpt-5
+CONSULT_MODEL_GEMINI=                # e.g. gemini-2.5-pro
+CONSULT_ALLOWED_MODELS=              # optional allowlist (leave empty to allow any model)
 CONSULT_TIMEOUT_SECS=120
 CONSULT_MAX_INPUT_BYTES=120000
 CONSULT_MAX_OUTPUT_TOKENS=4096
