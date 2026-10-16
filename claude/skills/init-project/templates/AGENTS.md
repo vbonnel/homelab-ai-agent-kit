@@ -1,6 +1,6 @@
 # AGENTS.md - rules for every AI working on this project
 
-Read by Claude Code and by GPT-6 Luna (Codex). Keep it short and true.
+Read by AI agents working on this project. Keep it short and true.
 
 ## What this project is
 <1-3 plain sentences.>
@@ -25,7 +25,7 @@ scripts/test.sh" or "external APIs are mocked">.
 - Never read, print or edit `.env` (secrets). Work copies get a safe `.env`
   made from `.env.workcopy`.
 - Never install packages without the owner's OK. If you need one, say so.
-- Don't commit, push or change branches: the architect (Claude) does that.
+- Don't commit, push or change branches directly: kit commands handle saving and merging.
 
 ## How the app runs for real
 <e.g. "systemd service `fablab-web` runs webapp/server.js on port 3000",

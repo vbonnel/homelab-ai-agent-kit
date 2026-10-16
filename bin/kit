@@ -193,7 +193,7 @@ cmd_diff() {
 }
 
 # ------------------------------------------------------------------ merge ---
-# Keep Luna's run logs (prompts, logs, token counts) after the work copy is deleted
+# Keep run logs (prompts, logs, token counts) after the work copy is deleted
 keep_runs() { # $1=main $2=work copy $3=name
   [ -d "$2/.kit/runs" ] || return 0
   mkdir -p "$1/.kit/runs/$3" && cp -a "$2/.kit/runs/." "$1/.kit/runs/$3/" 2>/dev/null || true
@@ -269,7 +269,7 @@ Nothing was merged. Claude must update the work copy with the latest project fir
 
   say ""
   say "MERGED: '$name' is now in the real project (version $hash)."
-  [ -f "$main/.kit/runs/$name/usage.tsv" ] && say "Luna runs (logs in .kit/runs/$name/):" && sed 's/^/    /' "$main/.kit/runs/$name/usage.tsv"
+  [ -f "$main/.kit/runs/$name/usage.tsv" ] && say "Runs (logs in .kit/runs/$name/):" && sed 's/^/    /' "$main/.kit/runs/$name/usage.tsv"
   say "UNDO: ask Claude \"undo the last feature\" (it will run: git revert -m 1 $hash)"
 }
 
@@ -470,7 +470,6 @@ cmd_doctor() {
   chk "git name/email set" "git config user.name && git config user.email" "run /opt/agent-kit/install.sh again"
   chk "node installed" "command -v node" "run install.sh"
   chk "Claude Code installed" "command -v claude" "run install.sh"
-  chk "Codex CLI installed (for GPT-6 Luna)" "command -v codex" "run install.sh"
   chk "consult CLI linked" "command -v consult" "run install.sh"
   chk "/feature skill linked" "test -f $HOME/.claude/skills/feature/SKILL.md" "run install.sh"
   chk "/init-project skill linked" "test -f $HOME/.claude/skills/init-project/SKILL.md" "run install.sh"
@@ -480,11 +479,9 @@ cmd_doctor() {
     say "Project: $main"
     chk "AGENTS.md present" "test -f '$main/AGENTS.md'" "run /init-project"
     chk "scripts/test.sh present" "test -f '$main/scripts/test.sh'" "run /init-project"
-    chk "OpenAI key in .env (for Luna)" "grep -qE '^[[:space:]]*(export[[:space:]]+)?(LUNA_OPENAI_API_KEY|OPENAI_API_KEY)[[:space:]]*=[[:space:]]*[^[:space:]]' '$main/.env'" "put OPENAI_API_KEY=sk-... in $main/.env"
     chk ".env is ignored by git" "git -C '$main' check-ignore -q .env" "add .env to .gitignore"
     ( cd "$main" && load_project_conf "$main" && [ -f "$main/$DOCS_DIR/package.json" ] ) && say "  Docs: $(cd "$main" && cmd_docs_url)"
   fi
-  say "Luna: model=${LUNA_MODEL:-gpt-6-luna} sandbox=${LUNA_SANDBOX:-on}"
   say "Consult (opt-in delegation): providers=${CONSULT_PROVIDERS:-anthropic,openai,gemini} default=${CONSULT_DEFAULT_PROVIDER:-gemini}"
   [ $bad -eq 0 ] && say "All good." || say "Some checks failed (see [!] lines)."
   return $bad

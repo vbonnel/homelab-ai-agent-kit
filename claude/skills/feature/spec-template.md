@@ -10,7 +10,7 @@ Restart needed after merge: no | yes - <which service>
 <What the owner wants, in 1-3 sentences. What will be different afterwards.>
 
 ## Not doing
-<What is explicitly out of scope, so Luna doesn't over-build.>
+<What is explicitly out of scope, to avoid over-building.>
 
 ## Current situation
 <Normal size only. The relevant files and how they work today.>
@@ -27,5 +27,5 @@ services (per AGENTS.md: throwaway test database, fakes, mocks).>
 - [ ] <Something checkable: "running X with Y gives Z">
 - [ ] `scripts/test.sh` passes
 
-## Notes for Luna
+## Implementation notes
 <Anything else: style to follow, traps to avoid, files not to touch.>

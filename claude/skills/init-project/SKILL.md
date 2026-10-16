@@ -95,9 +95,6 @@ features disabled if there is a switch. No real secret may ever go in this
 file. It is saved in git (`!.env.workcopy` in .gitignore) and copied into each
 work copy as its `.env`, so work copies can never reach the real data.
 
-Then `kit env-ensure OPENAI_API_KEY` (adds an empty line to the real `.env`
-only if missing; the owner fills it in).
-
 ## Step 6 - Docs website
 1. `kit docs init "<Project name>"` (creates `docs/` with the standard pages;
    takes a few minutes). If `docs/` already exists for something else, write
@@ -132,10 +129,9 @@ site serves a built folder. If no, write the restart command in AGENTS.md.
 
 ## Step 9 - Tell the owner (short)
 - Done. The docs website address.
-- If the OpenAI key is empty: "Put your OpenAI key in .env: `nano .env`,
-  line `OPENAI_API_KEY=sk-...` (tip: one key per container, with a monthly
-  spending limit). Optional: add `GEMINI_API_KEY=...` or `ANTHROPIC_API_KEY=...`
-  if you want to delegate second-opinion reviews or investigations (`consult`)."
+- Setting up API keys: "If you plan to use specialist delegation (`consult`),
+  add your API keys to `~/.config/agent-kit/secrets.env` (`nano ~/.config/agent-kit/secrets.env`).
+  Tip: generate a dedicated key per container with a spending limit."
   Never ask for keys in chat.
 - How to start: `/feature <what you want>`.
 - Follow-ups (only if any): 1-5 short bullets.

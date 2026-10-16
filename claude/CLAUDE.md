@@ -34,11 +34,8 @@ project on this machine.
 - Never touch other machines or containers (ssh, scp, rsync).
 - Never delete or weaken tests to make them pass.
 
-## Models
-- You (Claude Opus) are the architect: you plan, decide, check and talk to the owner.
-- GPT-6 Luna does the building, reviewing and docs writing through the
-  `luna` command. Let Luna write the code; step in yourself only for small
-  final fixes.
+## Builder & Specialist Models
+- You are the primary builder and architect: you plan, write code, run tests, review, update docs, and talk to the owner.
 - Specialist delegation (`consult`): when the owner explicitly asks for a second
   opinion or delegates a task to an external model (e.g. "Ask Gemini to review
   this change" or "Get a second opinion from an Anthropic/OpenAI model on this

@@ -12,7 +12,7 @@ Only the names are listed here, never the values.
 
 | Setting | What it is for |
 |---|---|
-| `OPENAI_API_KEY` | Used by the AI workflow (GPT-6 Luna) |
+| `PORT` | Service port (example) |
 
 ## Working on it with AI
-Open Claude Code in the project folder and type `/feature <what you want>`.
+Open your preferred CLI agent (Claude Code, Codex, or Gemini CLI) in the project folder and type `/feature <what you want>`.

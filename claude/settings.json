@@ -7,9 +7,6 @@
   },
   "permissions": {
     "allow": [
-      "Bash(luna build *)",
-      "Bash(luna review *)",
-      "Bash(luna docs *)",
       "Bash(consult review *)",
       "Bash(consult investigate *)",
       "Bash(consult tests *)",

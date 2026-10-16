@@ -1,6 +1,6 @@
 ---
 name: feature
-description: The one command for any change to a project - new feature, fix, tweak, or "continue". Plans with the owner, has GPT-6 Luna build, test and review it in a separate work copy, updates the docs, then merges when the owner says yes. Use for ANY change to a project's code, docs or config, even small ones.
+description: The one command for any change to a project - new feature, fix, tweak, or "continue". Plans with the owner, builds, tests, updates docs in a separate work copy, then merges when the owner says yes. Use for ANY change to a project's code, docs or config, even small ones.
 argument-hint: "<what you want, in plain words> | continue"
 model: opus
 ---
@@ -9,9 +9,9 @@ model: opus
 
 Request from the owner: **$ARGUMENTS**
 
-You are the architect (Claude Opus). GPT-6 Luna (the `luna` command) builds,
-reviews and writes docs. You plan, decide, check and talk to the owner. The
-owner is not a developer: short plain messages, no git jargon.
+You are the primary builder and architect. You plan, write the code and tests,
+update docs, and communicate with the owner. The owner is not a developer:
+short plain messages, no git jargon.
 
 ## Ground rules
 - The owner answers **two questions** per feature: "Here's the plan. OK?" and
@@ -24,8 +24,8 @@ owner is not a developer: short plain messages, no git jargon.
 - Keep the `Status:` line of `specs/<name>.md` current and saved, so
   `/feature continue` can pick up anywhere.
 - Post one short line per step so the owner can follow, e.g.
-  "Plan ready", "Luna is building (round 1)...", "Tests passed", "Review passed".
-- Long commands (`luna ...`, `kit test`, `kit merge`) can take many minutes:
+  "Plan ready", "Building...", "Tests passed", "Docs updated".
+- Long commands (`kit test`, `kit merge`, `kit docs build`) can take many minutes:
   run them with the Bash `timeout` set to 3600000.
 - Specialist delegation (`consult`): never call external APIs (`consult`) by
   default. If the owner explicitly asks for an external review, bug investigation,
@@ -66,9 +66,9 @@ owner is not a developer: short plain messages, no git jargon.
 2. Size it: **small** (a fix or tweak, a few files, no database change) or
    **normal**.
 3. Write `specs/<name>.md` from `${CLAUDE_SKILL_DIR}/spec-template.md`.
-   Small: only the header, Goal, Changes and Acceptance checks. The spec is for
-   Luna, who knows nothing else: exact files, functions, behaviour, edge cases,
-   tests to add, and how tests avoid the real database (per AGENTS.md).
+   Small: only the header, Goal, Changes and Acceptance checks. The spec defines
+   exact files, functions, behaviour, edge cases, tests to add, and how tests
+   avoid the real database (per AGENTS.md).
 4. `kit save "plan: <name>"`.
 5. Show the owner a plain summary (at most 10 lines): what will change, what
    they will notice, and any risk (database change, new setting in .env,
@@ -79,42 +79,37 @@ owner is not a developer: short plain messages, no git jargon.
    - Cancel: ExitWorktree (keep), then `kit discard <name>`; confirm in one line.
 7. Set `Status: approved`, `kit save "plan approved: <name>"`.
 
-## Step 3 - Build, test, review (at most 3 rounds)
-For round r = 1, 2, 3:
-1. `Status: building (round r)`. Run `luna build <name>` (round 1) or
-   `luna build <name> --notes .kit/fix-notes.md` (later rounds). Read its report.
-2. `kit save "build: <name> (round r)"`.
-3. `kit test`. If it FAILED: write `.kit/fix-notes.md` (the failing tests, the
-   error, and your diagnosis: which file, what to change) and go to the next
-   round. Skip the review.
-4. `Status: reviewing (round r)`, save. Run `luna review <name>`.
-   - `VERDICT: PASS`: leave the loop.
-   - `VERDICT: CHANGES`: judge each issue yourself. Drop wrong ones and
-     nitpicks. If none are left, leave the loop. Otherwise write the real ones
-     to `.kit/fix-notes.md` (numbered: file, problem, expected fix) and go to
-     the next round.
-
-After 3 rounds, if it is still not done: fix small, clear leftovers yourself
-(then `kit test` and `kit save`). If it is bigger, tell the owner plainly what
-is stuck and ask: keep trying, keep it for later (`Status: paused`), or throw
-it away. Never merge with failing tests.
+## Step 3 - Build & test
+1. `Status: building`. Write or update the code and tests in the work copy as
+   specified in `specs/<name>.md`. Follow workspace standards and idiomatic practices.
+2. `kit save "build: <name>"`.
+3. `kit test`.
+   - If tests FAIL: analyze the failure output, diagnose the issue, update the code
+     or tests, and run `kit test` again. Repeat until all tests pass.
+   - If an external perspective is requested by the owner, use `consult investigate`
+     or `consult review` with `--authorized-once`.
+4. `Status: tests passed`, `kit save "tests passed: <name>"`.
 
 ## Step 4 - Docs
 If the project has a docs website (`docs/`, or `DOCS_DIR` in `.agentkit`):
-`Status: docs`, run `luna docs <name>`, check its report. Undo any change it
-made outside the docs folder (`git checkout -- <file>`). `kit save "docs: <name>"`.
+1. `Status: docs`. Update the docs website pages in `docs/src/content/docs/`
+   (e.g. `changelog.md`, `how-it-works.md`, or relevant topic pages) to reflect
+   the changes made in this feature.
+2. `kit docs build` to verify there are no compilation or broken link issues.
+3. Undo any accidental changes made outside the docs folder (`git checkout -- <file>`).
+4. `kit save "docs: <name>"`.
 
 ## Step 5 - Final check (you)
-1. `kit diff --stat`, then `kit diff` and read the important parts.
-2. Tick every acceptance check in the spec against the code and tests. Fix a
-   small gap yourself (then `kit test`, `kit save`), or do one more Luna round.
+1. `kit diff --stat`, then `kit diff` and review your changes carefully.
+2. Tick every acceptance check in the spec against the code and tests. Fix any
+   small gap yourself (then `kit test`, `kit save`).
 3. If AGENTS.md says how to refresh the code map (e.g. codebase.md), do it now.
 4. `Status: ready to merge`, `kit save "ready: <name>"`.
 
 ## Step 6 - Merge
 1. Tell the owner, in at most 12 plain lines: what changed, how it was checked
-   (tests passed, review passed), anything they must do after (database
-   change, new .env setting, restart), and that it can be undone.
+   (tests passed), anything they must do after (database change, new .env setting,
+   restart), and that it can be undone.
 2. ExitWorktree with action `keep`.
 3. Run `kit merge <name>`. Claude Code shows the owner a yes/no prompt: that
    IS the merge question. Don't ask it a second time.
@@ -125,8 +120,7 @@ made outside the docs folder (`git checkout -- <file>`). `kit save "docs: <name>
      run `git merge <target branch from .kit/target-branch>`, resolve the
      conflicts keeping both intentions, `kit test`, `kit save`, ExitWorktree
      (keep), `kit merge <name>` again.
-   - Exit 4 (tests fail) or 6 (docs error): EnterWorktree, fix it (one Luna
-     round or yourself), save, retry.
+   - Exit 4 (tests fail) or 6 (docs error): EnterWorktree, fix it, save, retry.
    - Exit 7 (real project has unsaved changes): tell the owner and offer
      `kit save --main "..."`, then retry.
 4. After a successful merge:

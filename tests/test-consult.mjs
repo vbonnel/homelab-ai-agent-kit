@@ -449,7 +449,7 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
       join(confDir, 'config'),
       [
         '# Custom user config',
-        'LUNA_MODEL=my-custom-luna',
+        'CUSTOM_SETTING=true',
         'DOCS_PORT=9999',
         'CONSULT_DEFAULT_PROVIDER=anthropic',
         '',
@@ -479,7 +479,7 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
     });
 
     const updatedConfig = readFileSync(join(confDir, 'config'), 'utf8');
-    assert.ok(updatedConfig.includes('LUNA_MODEL=my-custom-luna'));
+    assert.ok(updatedConfig.includes('CUSTOM_SETTING=true'));
     assert.ok(updatedConfig.includes('DOCS_PORT=9999'));
     assert.ok(updatedConfig.includes('CONSULT_DEFAULT_PROVIDER=anthropic'));
     assert.ok(!updatedConfig.includes('CONSULT_DEFAULT_PROVIDER=gemini'));

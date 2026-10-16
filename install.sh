@@ -31,7 +31,7 @@ if [ $UNINSTALL -eq 1 ]; then
   for s in feature init-project consult; do
     [ -L "$CLAUDE_DIR/skills/$s" ] && rm "$CLAUDE_DIR/skills/$s" && ok "removed skill /$s"
   done
-  for b in kit luna consult; do
+  for b in kit consult; do
     [ -L "/usr/local/bin/$b" ] && $SUDO rm "/usr/local/bin/$b" && ok "removed command $b"
   done
   if [ -f /etc/profile.d/agent-kit.sh ]; then
@@ -92,7 +92,7 @@ if [ $QUICK -eq 0 ]; then
   fi
 
   # --------------------------------------------------------- 4. codex ---
-  step "4/7 Codex CLI (runs GPT-6 Luna)"
+  step "4/7 Codex CLI (optional builder)"
   if command -v codex >/dev/null; then ok "Codex found ($(codex --version 2>/dev/null | head -n1))"
   else
     echo "  Installing Codex CLI..."
@@ -103,9 +103,9 @@ if [ $QUICK -eq 0 ]; then
 fi
 
 # ------------------------------------------------------- 5. commands -----
-step "5/7 Commands: kit, luna, consult"
+step "5/7 Commands: kit, consult"
 chmod +x "$KIT_DIR/bin/"* "$KIT_DIR/install.sh" 2>/dev/null
-for b in kit luna consult; do
+for b in kit consult; do
   $SUDO ln -sfn "$KIT_DIR/bin/$b" "/usr/local/bin/$b" && ok "$b -> /usr/local/bin/$b" || fail "could not link $b"
 done
 # make /usr/local/bin, /usr/local/sbin and ~/.local/bin available in every shell (including non-login pct enter / lxc-attach)
@@ -151,12 +151,6 @@ else fail "node missing: cannot merge settings"; fi
 if [ ! -f "$CONF_DIR/config" ]; then
   cat > "$CONF_DIR/config" <<'EOF'
 # Homelab agent kit - settings for this container
-LUNA_MODEL=gpt-6-luna
-LUNA_EFFORT_BUILD=medium
-LUNA_EFFORT_REVIEW=medium
-LUNA_EFFORT_DOCS=medium
-# on = Codex runs Luna in its own sandbox; off = no extra sandbox (the container is the boundary)
-LUNA_SANDBOX=auto
 DOCS_PORT=4321
 
 # Specialist delegation (consult) - opt-in only
@@ -165,7 +159,7 @@ CONSULT_DEFAULT_PROVIDER=gemini
 CONSULT_MODEL_ANTHROPIC=claude-sonnet-4-5
 CONSULT_MODEL_OPENAI=gpt-5
 CONSULT_MODEL_GEMINI=gemini-2.5-pro
-CONSULT_ALLOWED_MODELS=claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-6-luna,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash
+CONSULT_ALLOWED_MODELS=claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash
 CONSULT_TIMEOUT_SECS=120
 CONSULT_MAX_INPUT_BYTES=120000
 CONSULT_MAX_OUTPUT_TOKENS=4096
@@ -190,7 +184,7 @@ else
   ensure_conf CONSULT_MODEL_ANTHROPIC "claude-sonnet-4-5"
   ensure_conf CONSULT_MODEL_OPENAI "gpt-5"
   ensure_conf CONSULT_MODEL_GEMINI "gemini-2.5-pro"
-  ensure_conf CONSULT_ALLOWED_MODELS "claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-6-luna,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash"
+  ensure_conf CONSULT_ALLOWED_MODELS "claude-sonnet-4-5,claude-opus-4-5,claude-3-7-sonnet-latest,claude-3-5-haiku-latest,gpt-5,gpt-5-mini,gpt-4.1,gpt-4.1-mini,o3,o4-mini,gemini-2.5-pro,gemini-2.5-flash"
   ensure_conf CONSULT_TIMEOUT_SECS "120"
   ensure_conf CONSULT_MAX_INPUT_BYTES "120000"
   ensure_conf CONSULT_MAX_OUTPUT_TOKENS "4096"
@@ -209,14 +203,6 @@ GEMINI_API_KEY=
 EOF
   chmod 600 "$CONF_DIR/secrets.env"
   ok "created $CONF_DIR/secrets.env (chmod 600)"
-fi
-if grep -q '^LUNA_SANDBOX=auto' "$CONF_DIR/config" && command -v codex >/dev/null; then
-  if timeout 20 codex sandbox linux -- /bin/true >/dev/null 2>&1 || timeout 20 codex sandbox linux /bin/true >/dev/null 2>&1; then
-    sed -i 's/^LUNA_SANDBOX=auto/LUNA_SANDBOX=on/' "$CONF_DIR/config"; ok "Codex sandbox works in this container (LUNA_SANDBOX=on)"
-  else
-    sed -i 's/^LUNA_SANDBOX=auto/LUNA_SANDBOX=off/' "$CONF_DIR/config"
-    warn "Codex's own sandbox does not work in this container -> LUNA_SANDBOX=off (Luna still only works inside work copies)"
-  fi
 fi
 
 # ----------------------------------------------------- 7. git identity ---
@@ -243,7 +229,7 @@ Next steps:
   2. Go to your project:           cd /opt/<your-project>
   3. Start Claude there:           claude
   4. Prepare the project (once):   /init-project
-  5. Put your OpenAI key in the project's .env (nano .env):  OPENAI_API_KEY=sk-...
+  5. Add your API keys:            nano ~/.config/agent-kit/secrets.env
   6. Then, for anything you want:  /feature <what you want, in plain words>
 
 Check everything any time:  kit doctor        Update the kit:  kit update
