@@ -1,6 +1,6 @@
 # Longer consult calls (10-minute time limit, bigger answers)
 
-Status: tests passed
+Status: ready to merge
 Size: small
 Database change: no
 New settings (.env keys): none (existing kit settings get new defaults)
@@ -69,13 +69,13 @@ All tests use the existing local fake HTTP server; no real API calls.
   600 s limit gets the answer.
 
 ## Acceptance checks
-- [ ] With no limits set, consult waits up to 600 s and asks for up to 16384 output tokens.
-- [ ] A reply that takes 6 minutes arrives (manual local check), instead of failing at 5 minutes.
-- [ ] Timeout message names the setting: "No answer within <N>s (CONSULT_TIMEOUT_SECS)".
-- [ ] Kit update bumps exactly-old-default values (120, 4096) and keeps custom ones.
-- [ ] Requests to all three providers keep the same URL, headers and body shape.
-- [ ] lib/consult.mjs still has CRLF line endings only.
-- [ ] `scripts/test.sh` passes
+- [x] With no limits set, consult waits up to 600 s and asks for up to 16384 output tokens.
+- [x] A reply that takes 6 minutes arrives (manual local check), instead of failing at 5 minutes.
+- [x] Timeout message names the setting: "No answer within <N>s (CONSULT_TIMEOUT_SECS)".
+- [x] Kit update bumps exactly-old-default values (120, 4096) and keeps custom ones.
+- [x] Requests to all three providers keep the same URL, headers and body shape.
+- [x] lib/consult.mjs still has CRLF line endings only.
+- [x] `scripts/test.sh` passes
 
 ## Implementation notes
 - Worst-case cost estimate per call = input estimate + 16384 output tokens at the
