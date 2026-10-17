@@ -1,6 +1,6 @@
 # Longer consult calls (10-minute time limit, bigger answers)
 
-Status: planning
+Status: building
 Size: small
 Database change: no
 New settings (.env keys): none (existing kit settings get new defaults)
@@ -45,6 +45,8 @@ values the owner changed by hand are kept.
   CONSULT_MAX_COST_CALL_USD.
 - `scripts/test.sh` (new): runs `node --test tests/*.mjs` from the kit folder, so
   `kit test` and `kit merge` work for the kit itself.
+- `.gitignore` (new): `.env`, so the work copy's placeholder settings file is never
+  saved (kit save refused without it).
 
 ## Tests to add or update
 All tests use the existing local fake HTTP server; no real API calls.
