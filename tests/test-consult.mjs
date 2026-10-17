@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   writeFileSync,
   readFileSync,
+  readdirSync,
   existsSync,
   mkdirSync,
   rmSync,
@@ -291,6 +292,9 @@ test('3. One-off authorized delegations work across Anthropic, OpenAI, and Gemin
     const anthReq = receivedRequests.at(-1);
     assert.ok(anthReq.url.startsWith('/anthropic'));
     assert.equal(anthReq.headers['x-api-key'], 'sk-ant-testkey1234567890');
+    assert.equal(anthReq.headers['anthropic-version'], '2023-06-01');
+    assert.equal(anthReq.headers['content-type'], 'application/json');
+    assert.equal(anthReq.body.max_tokens, 16384);
     assert.ok(!anthReq.rawBody.includes('leakedSecretToken987654321'), 'Secret must be redacted in payload');
     assert.ok(anthReq.rawBody.includes('sk-[REDACTED]'));
 
@@ -311,6 +315,7 @@ test('3. One-off authorized delegations work across Anthropic, OpenAI, and Gemin
     const oaReq = receivedRequests.at(-1);
     assert.ok(oaReq.url.startsWith('/openai'));
     assert.equal(oaReq.headers.authorization, 'Bearer sk-proj-testkey1234567890');
+    assert.equal(oaReq.body.max_completion_tokens, 16384);
 
     rc = await runCli(
       [
@@ -329,6 +334,7 @@ test('3. One-off authorized delegations work across Anthropic, OpenAI, and Gemin
     const gemReq = receivedRequests.at(-1);
     assert.ok(gemReq.url.startsWith('/gemini/gemini-2.5-pro:generateContent'));
     assert.equal(gemReq.headers['x-goog-api-key'], 'AIzaSyTestKey1234567890123456');
+    assert.equal(gemReq.body.generationConfig.maxOutputTokens, 16384);
 
     const usageTsv = readFileSync(join(repoDir, '.kit', 'runs', 'usage.tsv'), 'utf8');
     assert.ok(usageTsv.includes('consult:review:anthropic:claude-sonnet-4-5'));
@@ -439,6 +445,14 @@ test('5. Refuses reading .env via --file and enforces model allowlist, cost limi
       { kitDir: KIT_DIR, kitConfPath: slowConf, cwd: repoDir }
     );
     assert.equal(rc, 4);
+    const runsDir = join(repoDir, '.kit', 'runs');
+    const logs = readdirSync(runsDir)
+      .filter((f) => f.endsWith('.log'))
+      .map((f) => readFileSync(join(runsDir, f), 'utf8'));
+    assert.ok(
+      logs.some((log) => log.includes('No answer within 1s (CONSULT_TIMEOUT_SECS)')),
+      'Timeout log should name the setting'
+    );
 
     const tightCostConf = join(dir, 'config-cost');
     writeFileSync(
@@ -492,7 +506,7 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
       )
     );
 
-    execFileSync('bash', [join(KIT_DIR, 'install.sh'), '--quick'], {
+    execFileSync('bash', [join(KIT_DIR, 'install.sh'), '--quick', '--no-system'], {
       env: { ...process.env, HOME: fakeHome },
       stdio: 'pipe',
     });
@@ -504,7 +518,8 @@ test('6. Non-destructive install.sh --quick preserves existing user settings and
     assert.ok(updatedConfig.includes('CONSULT_DEFAULT_PROVIDER=anthropic'));
     assert.ok(!updatedConfig.includes('CONSULT_DEFAULT_PROVIDER=gemini'));
     assert.ok(updatedConfig.includes('CONSULT_PROVIDERS=anthropic,openai,gemini'));
-    assert.ok(updatedConfig.includes('CONSULT_TIMEOUT_SECS=120'));
+    assert.ok(updatedConfig.includes('CONSULT_TIMEOUT_SECS=600'));
+    assert.ok(updatedConfig.includes('CONSULT_MAX_OUTPUT_TOKENS=16384'));
 
     const secretsContent = readFileSync(join(confDir, 'secrets.env'), 'utf8');
     assert.equal(secretsContent, 'ANTHROPIC_API_KEY=sk-ant-preserved-key' + LF);
@@ -528,5 +543,55 @@ test('7. kit version command and flags (--version, -v, version)', () => {
     const out = execFileSync('bash', [kitBin, flag], { encoding: 'utf8' }).trim();
     assert.match(out, /^kit version [a-f0-9]+ \d{4}-\d{2}-\d{2}$/);
   }
+});
+
+test('8. install.sh --quick raises the old consult defaults and keeps values changed by hand', () => {
+  const cases = [
+    {
+      given: ['CONSULT_TIMEOUT_SECS=120', 'CONSULT_MAX_OUTPUT_TOKENS=4096'],
+      expected: ['CONSULT_TIMEOUT_SECS=600', 'CONSULT_MAX_OUTPUT_TOKENS=16384'],
+    },
+    {
+      given: ['CONSULT_TIMEOUT_SECS=300', 'CONSULT_MAX_OUTPUT_TOKENS=8000'],
+      expected: ['CONSULT_TIMEOUT_SECS=300', 'CONSULT_MAX_OUTPUT_TOKENS=8000'],
+    },
+  ];
+  for (const { given, expected } of cases) {
+    const fakeHome = mkdtempSync(join(tmpdir(), 'agent-kit-home-'));
+    try {
+      const confDir = join(fakeHome, '.config', 'agent-kit');
+      mkdirSync(confDir, { recursive: true });
+      writeFileSync(join(confDir, 'config'), ['DOCS_PORT=4321', ...given, ''].join(LF));
+
+      execFileSync('bash', [join(KIT_DIR, 'install.sh'), '--quick', '--no-system'], {
+        env: { ...process.env, HOME: fakeHome },
+        stdio: 'pipe',
+      });
+
+      const lines = readFileSync(join(confDir, 'config'), 'utf8').split(LF);
+      for (const line of expected) {
+        assert.ok(lines.includes(line), `Expected ${line} after install from ${given.join(', ')}`);
+      }
+      assert.equal(lines.filter((l) => l.startsWith('CONSULT_TIMEOUT_SECS=')).length, 1);
+      assert.equal(lines.filter((l) => l.startsWith('CONSULT_MAX_OUTPUT_TOKENS=')).length, 1);
+    } finally {
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  }
+});
+
+test('9. consult models reports the 10-minute default time limit', async () => {
+  const { dir, repoDir, kitConfPath } = createTempProject();
+  const printed = [];
+  const originalLog = console.log;
+  console.log = (...args) => printed.push(args.join(' '));
+  try {
+    const rc = await runCli(['models'], { kitDir: KIT_DIR, kitConfPath, cwd: repoDir });
+    assert.equal(rc, 0);
+  } finally {
+    console.log = originalLog;
+    rmSync(dir, { recursive: true, force: true });
+  }
+  assert.ok(printed.some((line) => line.includes('timeout=600s')), printed.join(LF));
 });
 

@@ -181,13 +181,17 @@ CONSULT_MODEL_ANTHROPIC=             # e.g. claude-sonnet-4-5
 CONSULT_MODEL_OPENAI=                # e.g. gpt-5
 CONSULT_MODEL_GEMINI=                # e.g. gemini-2.5-pro
 CONSULT_ALLOWED_MODELS=              # optional allowlist (leave empty to allow any model)
-CONSULT_TIMEOUT_SECS=120
+CONSULT_TIMEOUT_SECS=600             # 10 minutes: room for models that think for a long time
 CONSULT_MAX_INPUT_BYTES=120000
-CONSULT_MAX_OUTPUT_TOKENS=4096
+CONSULT_MAX_OUTPUT_TOKENS=16384
 CONSULT_MAX_COST_CALL_USD=0.50
 CONSULT_MAX_COST_DAILY_USD=5.00
 CONSULT_MAX_CALLS_SESSION=15
 ```
+
+Before each call, consult checks a worst-case cost (prompt + `CONSULT_MAX_OUTPUT_TOKENS`
+answer) against `CONSULT_MAX_COST_CALL_USD`, so raising the output limit can block
+calls to expensive models. You only pay for the tokens actually used.
 
 ## Troubleshooting
 
