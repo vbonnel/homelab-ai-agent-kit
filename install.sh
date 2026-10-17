@@ -6,6 +6,7 @@
 #
 # Safe to run again at any time (it only adds what is missing).
 #   --quick       skip the software installs (used by `kit update`)
+#   --no-system   leave /usr/local/bin and /etc alone (used by the kit's own tests)
 #   --uninstall   remove the kit's links and settings (keeps Claude Code, Codex, Node)
 set -uo pipefail
 
@@ -13,8 +14,8 @@ KIT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 CLAUDE_DIR="$HOME/.claude"
 CODEX_DIR="$HOME/.codex"
 CONF_DIR="$HOME/.config/agent-kit"
-QUICK=0; UNINSTALL=0
-for a in "$@"; do case "$a" in --quick) QUICK=1;; --uninstall) UNINSTALL=1;; esac; done
+QUICK=0; UNINSTALL=0; NOSYSTEM=0
+for a in "$@"; do case "$a" in --quick) QUICK=1;; --uninstall) UNINSTALL=1;; --no-system) NOSYSTEM=1;; esac; done
 
 G='\033[32m'; R='\033[31m'; Y='\033[33m'; B='\033[1m'; N='\033[0m'
 step() { printf "\n${B}== %s${N}\n" "$*"; }
@@ -105,24 +106,27 @@ fi
 # ------------------------------------------------------- 5. commands -----
 step "5/7 Commands: kit, consult"
 chmod +x "$KIT_DIR/bin/"* "$KIT_DIR/install.sh" 2>/dev/null
-for b in kit consult; do
-  $SUDO ln -sfn "$KIT_DIR/bin/$b" "/usr/local/bin/$b" && ok "$b -> /usr/local/bin/$b" || fail "could not link $b"
-done
-# make /usr/local/bin, /usr/local/sbin and ~/.local/bin available in every shell (including non-login pct enter / lxc-attach)
-if [ -w /etc/profile.d ] || [ -n "$SUDO" ]; then
-  cat <<'EOF' | $SUDO tee /etc/profile.d/agent-kit.sh >/dev/null
+if [ $NOSYSTEM -eq 1 ]; then ok "skipped /usr/local/bin and /etc (--no-system)"
+else
+  for b in kit consult; do
+    $SUDO ln -sfn "$KIT_DIR/bin/$b" "/usr/local/bin/$b" && ok "$b -> /usr/local/bin/$b" || fail "could not link $b"
+  done
+  # make /usr/local/bin, /usr/local/sbin and ~/.local/bin available in every shell (including non-login pct enter / lxc-attach)
+  if [ -w /etc/profile.d ] || [ -n "$SUDO" ]; then
+    cat <<'EOF' | $SUDO tee /etc/profile.d/agent-kit.sh >/dev/null
 case ":$PATH:" in *":/usr/local/bin:"*) ;; *) export PATH="/usr/local/bin:$PATH";; esac
 case ":$PATH:" in *":/usr/local/sbin:"*) ;; *) export PATH="/usr/local/sbin:$PATH";; esac
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH";; esac
 EOF
+  fi
+  if [ -w /etc/bash.bashrc ] || [ -n "$SUDO" ]; then
+    grep -qs 'agent-kit.sh' /etc/bash.bashrc 2>/dev/null || echo '[ -f /etc/profile.d/agent-kit.sh ] && . /etc/profile.d/agent-kit.sh' | $SUDO tee -a /etc/bash.bashrc >/dev/null
+  fi
+  grep -qs 'agent-kit.sh' "$HOME/.bashrc" || echo '[ -f /etc/profile.d/agent-kit.sh ] && . /etc/profile.d/agent-kit.sh' >> "$HOME/.bashrc"
+  for b in claude codex; do
+    if ! command -v "$b" >/dev/null 2>&1 && [ -x "$HOME/.local/bin/$b" ]; then $SUDO ln -sfn "$HOME/.local/bin/$b" "/usr/local/bin/$b"; fi
+  done
 fi
-if [ -w /etc/bash.bashrc ] || [ -n "$SUDO" ]; then
-  grep -qs 'agent-kit.sh' /etc/bash.bashrc 2>/dev/null || echo '[ -f /etc/profile.d/agent-kit.sh ] && . /etc/profile.d/agent-kit.sh' | $SUDO tee -a /etc/bash.bashrc >/dev/null
-fi
-grep -qs 'agent-kit.sh' "$HOME/.bashrc" || echo '[ -f /etc/profile.d/agent-kit.sh ] && . /etc/profile.d/agent-kit.sh' >> "$HOME/.bashrc"
-for b in claude codex; do
-  if ! command -v "$b" >/dev/null 2>&1 && [ -x "$HOME/.local/bin/$b" ]; then $SUDO ln -sfn "$HOME/.local/bin/$b" "/usr/local/bin/$b"; fi
-done
 
 # ----------------------------------------------- 6. claude & codex config -
 step "6/7 Claude Code & Codex setup: skills, rules, permissions, delegation"
@@ -160,9 +164,9 @@ CONSULT_MODEL_ANTHROPIC=
 CONSULT_MODEL_OPENAI=
 CONSULT_MODEL_GEMINI=
 CONSULT_ALLOWED_MODELS=
-CONSULT_TIMEOUT_SECS=120
+CONSULT_TIMEOUT_SECS=600
 CONSULT_MAX_INPUT_BYTES=120000
-CONSULT_MAX_OUTPUT_TOKENS=4096
+CONSULT_MAX_OUTPUT_TOKENS=16384
 CONSULT_MAX_COST_CALL_USD=0.50
 CONSULT_MAX_COST_DAILY_USD=5.00
 CONSULT_MAX_CALLS_SESSION=15
@@ -176,6 +180,9 @@ else
   sed -i 's/^CONSULT_MODEL_OPENAI=gpt-5$/CONSULT_MODEL_OPENAI=/' "$CONF_DIR/config" 2>/dev/null || true
   sed -i 's/^CONSULT_MODEL_GEMINI=gemini-2.5-pro$/CONSULT_MODEL_GEMINI=/' "$CONF_DIR/config" 2>/dev/null || true
   sed -i 's/^CONSULT_ALLOWED_MODELS=claude-sonnet-4-5.*/CONSULT_ALLOWED_MODELS=/' "$CONF_DIR/config" 2>/dev/null || true
+  # Raise the old consult defaults (2 minutes, 4096 tokens); values changed by hand are kept
+  sed -i 's/^CONSULT_TIMEOUT_SECS=120$/CONSULT_TIMEOUT_SECS=600/' "$CONF_DIR/config" 2>/dev/null || true
+  sed -i 's/^CONSULT_MAX_OUTPUT_TOKENS=4096$/CONSULT_MAX_OUTPUT_TOKENS=16384/' "$CONF_DIR/config" 2>/dev/null || true
   # Non-destructively append any new default CONSULT_* settings missing on existing containers
   added_conf=0
   ensure_conf() {
@@ -192,9 +199,9 @@ else
   ensure_conf CONSULT_MODEL_OPENAI ""
   ensure_conf CONSULT_MODEL_GEMINI ""
   ensure_conf CONSULT_ALLOWED_MODELS ""
-  ensure_conf CONSULT_TIMEOUT_SECS "120"
+  ensure_conf CONSULT_TIMEOUT_SECS "600"
   ensure_conf CONSULT_MAX_INPUT_BYTES "120000"
-  ensure_conf CONSULT_MAX_OUTPUT_TOKENS "4096"
+  ensure_conf CONSULT_MAX_OUTPUT_TOKENS "16384"
   ensure_conf CONSULT_MAX_COST_CALL_USD "0.50"
   ensure_conf CONSULT_MAX_COST_DAILY_USD "5.00"
   ensure_conf CONSULT_MAX_CALLS_SESSION "15"

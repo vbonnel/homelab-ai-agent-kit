@@ -40,6 +40,10 @@ values the owner changed by hand are kept.
   - Existing config: like the existing model clean-up lines, replace
     `CONSULT_TIMEOUT_SECS=120` with `600` and `CONSULT_MAX_OUTPUT_TOKENS=4096` with
     `16384` only when the line is exactly the old default. Any other value is kept.
+  - New `--no-system` flag (added during build): skips the `/usr/local/bin` links and
+    `/etc` edits of step 5. The install tests use it, so running the tests from a work
+    copy never re-points the `kit` / `consult` commands at that work copy (which
+    `kit merge` deletes afterwards).
 - `README.md`: settings block shows 600 and 16384, plus one short note that the
   output limit also raises the worst-case cost estimate checked against
   CONSULT_MAX_COST_CALL_USD.
@@ -55,7 +59,7 @@ All tests use the existing local fake HTTP server; no real API calls.
   `generationConfig.maxOutputTokens`).
 - Test 5 (existing slow endpoint, `CONSULT_TIMEOUT_SECS=1`): still exits 4; also
   check the run log says "No answer within 1s (CONSULT_TIMEOUT_SECS)".
-- Test 6 (existing install check): a config without the keys now gets
+- Test 6 (existing install check, now with `--no-system`): a config without the keys now gets
   `CONSULT_TIMEOUT_SECS=600` and `CONSULT_MAX_OUTPUT_TOKENS=16384` (updated default).
 - New test: install.sh --quick on a config with the old defaults (120 / 4096) bumps
   them to 600 / 16384; a config with custom values (300 / 8000) keeps them.
