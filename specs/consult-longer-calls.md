@@ -1,6 +1,6 @@
 # Longer consult calls (10-minute time limit, bigger answers)
 
-Status: building
+Status: tests passed
 Size: small
 Database change: no
 New settings (.env keys): none (existing kit settings get new defaults)
