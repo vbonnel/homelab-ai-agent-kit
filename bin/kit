@@ -332,6 +332,7 @@ cmd_docs_init() {
   cp "$KIT_DIR/templates/docs/pages/"*.md "$dir/src/content/docs/"
   local esc; esc="$(printf '%s' "$title" | sed 's/[\/&|]/\\&/g; s/"/\\"/g')"
   sed "s|__PROJECT_TITLE__|$esc|" "$KIT_DIR/templates/docs/astro.config.mjs" > "$dir/astro.config.mjs"
+  node "$KIT_DIR/lib/docs-upgrade.mjs" "$dir" >/dev/null || die "Could not add the kit docs features to $DOCS_DIR/."
   printf 'node_modules/\ndist/\n.astro/\n.dist-previous/\n' > "$dir/.gitignore"
   say "Installing the docs website tools (1-3 minutes)..."
   ( cd "$dir" && npm install --no-audit --no-fund --loglevel=error astro@latest @astrojs/starlight@latest sharp astro-mermaid "mermaid@^11" ) \
@@ -406,6 +407,18 @@ cmd_docs_update() {
   say "Docs online: $(cmd_docs_url)"
 }
 
+# Add the kit's docs features (diagram zoom, version pill) to an existing docs website, or bring
+# their files up to date. Pages are never touched. Works in a work copy too (for /feature).
+cmd_docs_upgrade() {
+  need_repo
+  local root; root="$(here_root)"; load_project_conf "$root"
+  local dir="$root/$DOCS_DIR"
+  [ -f "$dir/package.json" ] || die "No docs website in this project ($DOCS_DIR/). Run: kit docs init \"Title\"" 2
+  say "Adding the kit docs features to $DOCS_DIR/ ..."
+  node "$KIT_DIR/lib/docs-upgrade.mjs" "$dir" || die "Nothing was changed (see above)."
+  say "Next: kit docs build, then save the change."
+}
+
 cmd_docs_url() {
   local ip; ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo "http://${ip:-localhost}:$(docs_port)"
@@ -453,11 +466,12 @@ cmd_docs() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     init) cmd_docs_init "$@";;
+    upgrade) cmd_docs_upgrade "$@";;
     build) cmd_docs_build "$@";;
     update) cmd_docs_update "$@";;
     service) cmd_docs_service "$@";;
     url) cmd_docs_url;;
-    *) die "Usage: kit docs init \"Title\" | build | update [\"msg\"] | service [port] | url";;
+    *) die "Usage: kit docs init \"Title\" | upgrade | build | update [\"msg\"] | service [port] | url";;
   esac
 }
 
@@ -513,6 +527,7 @@ kit - homelab agent kit helper (normally used by Claude, not typed by you)
   kit consult ...            delegate a read-only task (review, investigate, tests, compare, ask)
   kit docs url               show the docs website address
   kit docs update ["msg"]    after editing docs pages: rebuild the website and save them
+  kit docs upgrade           add the kit's docs features (diagram zoom, version pill) to a docs website
 
 Used by Claude / Codex during /feature, /consult and /init-project:
   kit start <name> [--anyway]   create a work copy (branch feature/<name>)
@@ -523,7 +538,7 @@ Used by Claude / Codex during /feature, /consult and /init-project:
   kit discard <name>            delete a work copy (real project untouched)
   kit env-keys                  list .env key names (never values)
   kit env-ensure KEY            add an empty KEY= line to .env
-  kit docs init "Title" | build | update ["msg"] | service [port] | url
+  kit docs init "Title" | upgrade | build | update ["msg"] | service [port] | url
   consult <task> [options]      delegate to Anthropic, OpenAI, or Gemini (see: consult help)
 EOF
 }

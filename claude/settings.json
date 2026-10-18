@@ -26,6 +26,7 @@
       "Bash(kit env-keys)",
       "Bash(kit env-ensure *)",
       "Bash(kit docs init *)",
+      "Bash(kit docs upgrade)",
       "Bash(kit docs build)",
       "Bash(kit docs url)",
       "Bash(kit doctor)",

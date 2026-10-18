@@ -12,7 +12,9 @@ One command to build software using AI in your SWE projects:
 - Everything happens in a separate **work copy** of your project. The real
   project changes only when you say yes to the merge.
 - Each project gets a **docs website** at `http://<container-IP>:4321`, updated
-  after every merge.
+  after every merge. Its Mermaid diagrams have an **Enlarge** button (zoom and move
+  them full screen), and a **version pill** next to the title shows which saved
+  version the website was built from.
 
 ---
 
@@ -132,6 +134,18 @@ What `kit update` does safely in existing containers:
 - **Preserves your `~/.config/agent-kit/config`** and appends newly added default settings.
 - **Preserves your credentials**: never overwrites `~/.config/agent-kit/secrets.env` or project `.env` files.
 
+Projects are never changed by `kit update`. To give a docs website made with an older
+kit the newest docs features (diagram zoom, version pill), run this in the project:
+
+```
+/feature add the kit's docs features (kit docs upgrade)
+```
+
+`kit docs upgrade` adds the files to `docs/src/` and two lines to `docs/astro.config.mjs`.
+It never touches your pages, keeps any of those files you changed yourself (they lose the
+`agent-kit: managed file` line), and can be run again after later kit updates to get the
+newest version of the files.
+
 ---
 
 ## Useful commands
@@ -146,6 +160,7 @@ What `kit update` does safely in existing containers:
 | `consult usage` | shows token and estimated cost usage for specialist calls |
 | `kit docs url` | shows the docs website address |
 | `kit docs update ["msg"]` | rebuilds docs website after manual edits and saves |
+| `kit docs upgrade` | adds the kit's docs features (diagram zoom, version pill) to an existing docs website |
 | `kit update` | updates the kit from GitHub (preserves config and secrets) |
 
 ---
@@ -163,8 +178,8 @@ claude/skills/feature/      the /feature command
 claude/skills/consult/      the /consult command for specialist delegation
 claude/skills/init-project/ the /init-project command + project templates
 codex/AGENTS.md             global rules for Codex (linked into ~/.codex/AGENTS.md)
-templates/docs/             the standard docs website (Starlight, Mermaid diagrams)
-lib/                        helpers (consult.mjs, docs web server, settings merge)
+templates/docs/             the standard docs website (Starlight, Mermaid diagrams, diagram zoom, version pill)
+lib/                        helpers (consult.mjs, docs web server, docs upgrade, settings merge)
 ```
 
 ## Settings (per container)

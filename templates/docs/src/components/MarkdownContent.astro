@@ -1,0 +1,153 @@
+---
+/**
+ * agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
+ * delete this line to keep your own version instead.
+ *
+ * Page content: Starlight's own MarkdownContent, plus the full-screen viewer for the
+ * Mermaid diagrams (an "Enlarge" button on each diagram; zoom and move in the viewer).
+ *
+ * Set in astro.config.mjs (`components: { MarkdownContent: ... }`). The code is in
+ * src/scripts/diagram-zoom.mjs (made in the browser, so the styles below are global).
+ * Pages without diagrams: nothing changes.
+ */
+import Default from '@astrojs/starlight/components/MarkdownContent.astro';
+---
+
+<Default><slot /></Default>
+
+<script>
+	import '../scripts/diagram-zoom.mjs';
+</script>
+
+<style is:global>
+	/* On the page: the diagram as before, the button just above its right corner (so it
+	   never hides part of a wide diagram) */
+	.diagram-zoom {
+		display: flex;
+		flex-direction: column;
+		margin: 1rem 0 2rem;
+	}
+	.diagram-zoom > pre.mermaid {
+		margin: 0;
+	}
+	.diagram-zoom > pre.mermaid[data-processed]:has(> svg) {
+		cursor: zoom-in;
+	}
+	.diagram-zoom-open {
+		align-self: flex-end;
+		margin: 0 0 0.25rem;
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.25rem 0.6rem;
+		border: 1px solid var(--sl-color-accent);
+		border-radius: 999px;
+		background: var(--sl-color-accent-low);
+		color: var(--sl-color-text-accent);
+		font-size: var(--sl-text-sm);
+		font-weight: 600;
+		line-height: 1.4;
+		cursor: pointer;
+	}
+	.diagram-zoom-open:hover,
+	.diagram-zoom-open:focus-visible {
+		border-color: var(--sl-color-text-accent);
+	}
+
+	/* The viewer: the whole window, a bar of buttons on top, the diagram below */
+	.diagram-zoom-viewer {
+		inset: 0;
+		width: 100vw;
+		height: 100vh;
+		height: 100dvh;
+		max-width: none;
+		max-height: none;
+		margin: 0;
+		padding: 0;
+		border: none;
+		background: var(--sl-color-bg);
+		color: var(--sl-color-text);
+		flex-direction: column;
+	}
+	.diagram-zoom-viewer[open] {
+		display: flex;
+	}
+	html:has(.diagram-zoom-viewer[open]) {
+		overflow: hidden;
+	}
+	.diagram-zoom-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		border-bottom: 1px solid var(--sl-color-hairline);
+		background: var(--sl-color-bg-nav);
+	}
+	.diagram-zoom-hint {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-sm);
+	}
+	.diagram-zoom-level {
+		min-width: 3.5rem;
+		text-align: right;
+		color: var(--sl-color-gray-2);
+		font-family: var(--sl-font-system-mono);
+		font-size: var(--sl-text-sm);
+	}
+	.diagram-zoom-bar button {
+		min-width: 2.5rem;
+		height: 2.25rem;
+		padding: 0 0.75rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.5rem;
+		background: var(--sl-color-bg);
+		color: var(--sl-color-text);
+		font-size: var(--sl-text-base);
+		cursor: pointer;
+	}
+	.diagram-zoom-bar button:hover,
+	.diagram-zoom-bar button:focus-visible {
+		border-color: var(--sl-color-accent);
+		color: var(--sl-color-text-accent);
+	}
+	.diagram-zoom-stage {
+		position: relative;
+		flex: 1;
+		overflow: hidden;
+		touch-action: none;
+		cursor: grab;
+		user-select: none;
+	}
+	.diagram-zoom-stage.dragging {
+		cursor: grabbing;
+	}
+	.diagram-zoom-layer {
+		position: absolute;
+		top: 0;
+		left: 0;
+		transform-origin: 0 0;
+	}
+	.diagram-zoom-layer > svg {
+		display: block;
+	}
+
+	@media (max-width: 40rem) {
+		.diagram-zoom-hint {
+			display: none;
+		}
+		.diagram-zoom-level {
+			flex: 1;
+			text-align: left;
+		}
+	}
+	@media print {
+		.diagram-zoom-open {
+			display: none;
+		}
+	}
+</style>
