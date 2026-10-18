@@ -11,6 +11,12 @@ export default defineConfig({
     mermaid({ theme: 'default', autoTheme: true, enableLog: false }), // must come before starlight
     starlight({
       title: '__PROJECT_TITLE__',
+      // Kit docs features (kit docs upgrade): the docs version next to the title, and an
+      // "Enlarge" button on each diagram (zoom and move it full screen)
+      components: {
+        SiteTitle: './src/components/SiteTitle.astro',
+        MarkdownContent: './src/components/MarkdownContent.astro',
+      },
       sidebar: [
         { label: 'Context', link: '/' },
         { label: 'Getting started', link: '/getting-started/' },
