@@ -1,6 +1,6 @@
 # Docs websites: diagram zoom and a version pill, for new and existing projects
 
-Status: building
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -98,13 +98,13 @@ network, no npm install, no browser):
   added; run from a work copy (git worktree) it changes the work copy only.
 
 ## Acceptance checks
-- [ ] A new project gets both features from `kit docs init`
-- [ ] `kit docs upgrade` adds them to an existing docs website without touching its pages, keeps
+- [x] A new project gets both features from `kit docs init`
+- [x] `kit docs upgrade` adds them to an existing docs website without touching its pages, keeps
       files the project made its own, and can be run again safely
-- [ ] An existing website with the old template builds with the upgrade (checked by hand on one
+- [x] An existing website with the old template builds with the upgrade (checked by hand on one
       real project before the push)
-- [ ] No address, host name or project detail in the new files
-- [ ] `scripts/test.sh` passes
+- [x] No address, host name or project detail in the new files
+- [x] `scripts/test.sh` passes
 
 ## Implementation notes
 - `bin/kit` and the new files: LF line endings (`lib/consult.mjs` alone uses CRLF; not touched).
