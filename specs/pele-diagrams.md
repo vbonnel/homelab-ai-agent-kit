@@ -1,6 +1,6 @@
 # Docs websites: diagrams drawn by pele, in Atlassian colours
 
-Status: tests passed
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -31,7 +31,7 @@ dependencies, made by Obsidian) instead of mermaid.js:
   they show as plain text. Mermaid's own themes (`%%{init: {theme...}}%%`, `themeVariables`) no
   longer apply: colours come from the CSS theme. `classDef` and `style` still work.
 - No drawing in the browser (pele's `mount()`); no change to the zoom sums or the version pill.
-- No automatic browser tests: the before/after demo is checked by hand (screenshots).
+- No automatic browser tests: the before/after demo is checked by the owner (no browser here).
 
 ## Current situation
 - `templates/docs/astro.config.mjs` uses the `astro-mermaid` integration: each ```mermaid block
@@ -114,15 +114,22 @@ pele is replaced by a fake `draw` function):
   untouched. The existing upgrade test uses the stand-in too (it would download otherwise).
 
 ## Acceptance checks
-- [ ] A docs website built from the new template draws every diagram of the demo page (flowchart,
+- [x] A docs website built from the new template draws every diagram of the demo page (flowchart,
       sequence, C4, architecture, state, ER, class) at build time; no mermaid.js in `dist/`
-- [ ] Light/dark switch recolours diagrams with no redraw; kinds of boxes and C4 colours show
-- [ ] A broken diagram stops the build; the message gives the page and the right line in the file
-- [ ] `.mdx` pages work (braces in labels, components next to diagrams)
-- [ ] "Enlarge" viewer works on the new diagrams
-- [ ] `kit docs upgrade` switches a site made with the previous template, then it builds
-- [ ] Before/after demo: two sites served in the container and a page with screenshots
-- [ ] `scripts/test.sh` passes
+      (new site made by this branch's `kit docs init`, Astro pinned to 7.4.1, see "Not doing")
+- [~] Light/dark switch recolours diagrams with no redraw; kinds of boxes and C4 colours show:
+      both themes defined and tested in the CSS; not seen in a browser here (none in this
+      container, owner's choice): seen by the owner on the demo
+- [x] A broken diagram stops the build; the message gives the page and the right line in the file
+      (`kit docs build`: "src/content/docs/broken.md, line 11", the broken line)
+- [x] `.mdx` pages work (braces in labels, components next to diagrams)
+- [~] "Enlarge" viewer works on the new diagrams: the viewer finds `div.kit-diagram` (tested),
+      not clicked in a browser here
+- [x] `kit docs upgrade` switches a site made with the previous template, then it builds (real
+      npm: pele added, astro-mermaid and mermaid removed; a second run does nothing)
+- [x] Before/after demo: two sites served in the container (ports 4330, 4331) and a comparison
+      page (mermaid.js drawn live in the owner's browser next to pele's built SVGs, light/dark)
+- [x] `scripts/test.sh` passes
 
 ## Implementation notes
 - The prototype in the scratch folder proved: Sätteri plugin, MDX, error lines, theme switch CSS.
