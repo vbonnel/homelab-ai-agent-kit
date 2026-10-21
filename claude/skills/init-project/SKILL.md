@@ -106,7 +106,9 @@ work copy as its `.env`, so work copies can never reach the real data.
    which containers are involved), `operations.md` (start/stop/restart,
    backups and restore, logs, troubleshooting - reuse the owner's
    maintenance notes), `changelog.md` (one first line: set up the AI workflow).
-   Plain language, short.
+   Plain language, short. Draw the components and data flow as ```mermaid diagrams, boxes
+   marked with their kind (`:::service`, `:::data`, `:::external`...: see the comment at the
+   top of `how-it-works.md`).
 3. `kit docs build`, then `kit docs service` (asks permission: it installs a
    small always-on service). Note the address it prints.
 

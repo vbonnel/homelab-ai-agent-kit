@@ -1,0 +1,182 @@
+/* agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
+   delete this line to keep your own version instead.
+
+   Colours of the diagrams drawn by pele (diagrams.mjs): the Atlassian Design System palette
+   (the colours of Confluence and Jira), dark and light like the rest of the site. The theme
+   switch recolours the diagrams at once, nothing is redrawn. pele reads the --pele-* variables
+   (https://pele.run/theming).
+
+   Show what a box is with a class in the diagram, e.g. `orders[(Orders)]:::data`:
+     service   our own services and apps (boxes without a class look the same)
+     ui        web pages, front ends, apps people use
+     data      databases, storage, caches, files
+     queue     message queues, events, scheduled jobs
+     external  systems someone else runs (other companies, outside APIs)
+     person    people and roles
+     new       what a change adds (in a plan or the changelog)
+     risk      old, fragile or about to be removed
+   C4 diagrams get the same colours by themselves. A `classDef` or `style` line in a diagram
+   still wins over these colours. */
+
+/* Dark: Starlight's default */
+:root {
+	--pele-bg: #1f1f21;
+	--pele-fg: #cecfd2;
+	--pele-muted: #a9abaf;
+	--pele-line: #96999e;
+	--pele-surface: #1c2b42;
+	--pele-surface-alt: #303134;
+	--pele-border: #4688ec;
+	--pele-accent: #669df1;
+	--pele-critical: #f87168;
+	--pele-error: #fd9891;
+	--pele-series-1: #4688ec;
+	--pele-series-2: #94c748;
+	--pele-series-3: #c97cf4;
+	--pele-series-4: #fca700;
+	--pele-series-5: #1558bc;
+	--pele-series-6: #964ac0;
+	--pele-series-7: #42b2d7;
+	--pele-series-8: #e06c00;
+	--diagram-frame: #37373a;
+	--diagram-group-line: #7e8188;
+	--diagram-service-fill: #1c2b42;
+	--diagram-service-line: #4688ec;
+	--diagram-system-fill: #123263;
+	--diagram-ui-fill: #35243f;
+	--diagram-ui-line: #bf63f3;
+	--diagram-data-fill: #1e3137;
+	--diagram-data-line: #42b2d7;
+	--diagram-queue-fill: #3a2c1f;
+	--diagram-queue-line: #f68909;
+	--diagram-external-fill: #303134;
+	--diagram-external-line: #7e8188;
+	--diagram-person-fill: #669df1;
+	--diagram-person-text: #1f1f21;
+	--diagram-new-fill: #1c3329;
+	--diagram-new-line: #2abb7f;
+	--diagram-risk-fill: #42221f;
+	--diagram-risk-line: #f15b50;
+
+	/* Same fonts as the text sizes measured when the diagrams were drawn (diagrams.mjs) */
+	--pele-font: Helvetica, Arial, 'Liberation Sans', Arimo, sans-serif;
+	--pele-font-mono: ui-monospace, Menlo, Consolas, 'Liberation Mono', monospace;
+	--pele-radius: 6px;
+}
+
+:root[data-theme='light'] {
+	--pele-bg: #ffffff;
+	--pele-fg: #292a2e;
+	--pele-muted: #505258;
+	--pele-line: #6b6e76;
+	--pele-surface: #e9f2fe;
+	--pele-surface-alt: #f0f1f2;
+	--pele-border: #357de8;
+	--pele-accent: #1868db;
+	--pele-critical: #c9372c;
+	--pele-error: #ae2e24;
+	--pele-series-1: #357de8;
+	--pele-series-2: #82b536;
+	--pele-series-3: #bf63f3;
+	--pele-series-4: #f68909;
+	--pele-series-5: #1558bc;
+	--pele-series-6: #964ac0;
+	--pele-series-7: #42b2d7;
+	--pele-series-8: #bd5b00;
+	--diagram-frame: #dddee1;
+	--diagram-group-line: #8c8f97;
+	--diagram-service-fill: #e9f2fe;
+	--diagram-service-line: #357de8;
+	--diagram-system-fill: #cfe1fd;
+	--diagram-ui-fill: #f8eefe;
+	--diagram-ui-line: #af59e1;
+	--diagram-data-fill: #e7f9ff;
+	--diagram-data-line: #2898bd;
+	--diagram-queue-fill: #fff5db;
+	--diagram-queue-line: #e06c00;
+	--diagram-external-fill: #f0f1f2;
+	--diagram-external-line: #7d818a;
+	--diagram-person-fill: #1868db;
+	--diagram-person-text: #ffffff;
+	--diagram-new-fill: #dcfff1;
+	--diagram-new-line: #22a06b;
+	--diagram-risk-fill: #ffeceb;
+	--diagram-risk-line: #e2483d;
+}
+
+/* The card around each diagram on the page */
+.kit-diagram {
+	padding: 1rem;
+	border: 1px solid var(--diagram-frame);
+	border-radius: 0.5rem;
+	background: var(--pele-bg);
+}
+.kit-diagram > svg {
+	display: block;
+	margin-inline: auto;
+}
+
+/* Groups (subgraphs, C4 boundaries): a quiet grey edge */
+.pele-cluster > rect {
+	stroke: var(--diagram-group-line);
+}
+
+/* Kinds of boxes: each sets its fill and edge colour... */
+.pele-node.service,
+.pele-c4-container,
+.pele-c4-component {
+	--diagram-fill: var(--diagram-service-fill);
+	--diagram-line: var(--diagram-service-line);
+}
+.pele-c4-system {
+	--diagram-fill: var(--diagram-system-fill);
+	--diagram-line: var(--diagram-service-line);
+}
+.pele-node.ui {
+	--diagram-fill: var(--diagram-ui-fill);
+	--diagram-line: var(--diagram-ui-line);
+}
+.pele-node.data,
+.pele-node[class*='pele-c4-'][class*='_db'] {
+	--diagram-fill: var(--diagram-data-fill);
+	--diagram-line: var(--diagram-data-line);
+}
+.pele-node.queue,
+.pele-node[class*='pele-c4-'][class*='_queue'] {
+	--diagram-fill: var(--diagram-queue-fill);
+	--diagram-line: var(--diagram-queue-line);
+}
+.pele-node.external,
+.pele-node.pele-c4-external {
+	--diagram-fill: var(--diagram-external-fill);
+	--diagram-line: var(--diagram-external-line);
+}
+.pele-node.person,
+.pele-node.pele-c4-person {
+	--diagram-fill: var(--diagram-person-fill);
+	--diagram-line: var(--diagram-person-fill);
+}
+.pele-node.new {
+	--diagram-fill: var(--diagram-new-fill);
+	--diagram-line: var(--diagram-new-line);
+}
+.pele-node.risk {
+	--diagram-fill: var(--diagram-risk-fill);
+	--diagram-line: var(--diagram-risk-line);
+}
+
+/* ...which colour the shape (not its text, and not lines drawn without a fill) */
+.pele-node:is(.service, .ui, .data, .queue, .external, .person, .new, .risk, [class*='pele-c4-'])
+	> :not(text, svg, g)[fill]:not([fill='none']) {
+	fill: var(--diagram-fill, var(--pele-surface));
+}
+.pele-node:is(.service, .ui, .data, .queue, .external, .person, .new, .risk, [class*='pele-c4-'])
+	> :not(text, svg, g)[stroke] {
+	stroke: var(--diagram-line, var(--pele-border));
+}
+.pele-node.external > :not(text, svg, g)[stroke] {
+	stroke-dasharray: 5 3;
+}
+.pele-node:is(.person, .pele-c4-person) text {
+	fill: var(--diagram-person-text);
+}
