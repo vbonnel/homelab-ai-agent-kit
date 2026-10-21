@@ -95,7 +95,10 @@ If the project has a docs website (`docs/`, or `DOCS_DIR` in `.agentkit`):
 1. `Status: docs`. Update the docs website pages in `docs/src/content/docs/`
    (e.g. `changelog.md`, `how-it-works.md`, or relevant topic pages) to reflect
    the changes made in this feature.
-2. `kit docs build` to verify there are no compilation or broken link issues.
+   Diagrams: ```mermaid blocks; mark boxes with `:::service`, `:::data`, `:::external`... (list
+   in `docs/src/diagrams/theme.css`).
+2. `kit docs build` to verify there are no compilation or broken link issues. A diagram with an
+   error stops the build and names the page and line: fix the diagram.
 3. Undo any accidental changes made outside the docs folder (`git checkout -- <file>`).
 4. `kit save "docs: <name>"`.
 

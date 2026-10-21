@@ -1,14 +1,16 @@
 // Docs website for this project (Starlight). Created by the homelab agent kit.
 // Pages live in src/content/docs/. Rebuilt automatically after each merge.
-// Diagrams: write ```mermaid code blocks in the pages; they follow the light/dark theme.
+// Diagrams: write ```mermaid code blocks in the pages. They are drawn when the website is built,
+// in colours that follow the light/dark theme; a diagram with an error stops the build.
+// Kinds of boxes (:::data, :::external...): see src/diagrams/theme.css.
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import mermaid from 'astro-mermaid';
+import diagrams from './src/diagrams/diagrams.mjs';
 
 export default defineConfig({
   telemetry: false,
   integrations: [
-    mermaid({ theme: 'default', autoTheme: true, enableLog: false }), // must come before starlight
+    diagrams(), // ```mermaid blocks drawn by pele (src/diagrams/); before starlight
     starlight({
       title: '__PROJECT_TITLE__',
       // Kit docs features (kit docs upgrade): the docs version next to the title, and an

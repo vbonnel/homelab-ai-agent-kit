@@ -4,9 +4,10 @@
 // opens when clicked): a <dialog> where it can be zoomed (wheel, pinch, + -, double click)
 // and moved (drag). Loaded on every page by components/MarkdownContent.astro; pages
 // without diagrams: nothing happens.
-// astro-mermaid draws each diagram as an <svg> inside <pre class="mermaid">, then sets
-// data-processed. A theme change draws it again (new innerHTML), so the button sits
-// outside the <pre>.
+// Diagrams drawn when the website is built (src/diagrams/, pele) are an <svg> inside
+// <div class="kit-diagram">. Sites still on astro-mermaid: it draws each diagram as an <svg>
+// inside <pre class="mermaid">, then sets data-processed; a theme change draws it again (new
+// innerHTML), so the button sits outside the diagram's element.
 import { fitView, zoomAt, zoomLimits } from './zoom-math.mjs';
 
 const STEP = 1.25; // one press of + or -, or a key
@@ -21,25 +22,29 @@ let room = { w: 0, h: 0 };   // the viewer's size
 const pointers = new Map();  // fingers or mouse buttons down: id -> { x, y }
 let gesture = null;          // where they were at the last move
 
-const drawn = (pre) => (pre.hasAttribute('data-processed') ? pre.querySelector(':scope > svg') : null);
+// Diagrams drawn when the website was built have their picture at once; diagrams drawn in the
+// browser (astro-mermaid) once it sets data-processed
+const DIAGRAMS = 'div.kit-diagram, pre.mermaid';
+const drawn = (diagram) => (diagram.matches('pre.mermaid') && !diagram.hasAttribute('data-processed')
+  ? null : diagram.querySelector(':scope > svg'));
 
 // --- On the page: a wrapper and a button for each diagram ---------------------------
 function setup() {
-  for (const pre of document.querySelectorAll('pre.mermaid')) {
-    if (pre.parentElement?.classList.contains('diagram-zoom')) continue;
+  for (const diagram of document.querySelectorAll(DIAGRAMS)) {
+    if (diagram.parentElement?.classList.contains('diagram-zoom')) continue;
     const wrap = document.createElement('div');
     wrap.className = 'diagram-zoom';
-    pre.before(wrap);
+    diagram.before(wrap);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'diagram-zoom-open';
     button.title = 'Open the diagram full screen to zoom';
     button.innerHTML = `${ICON}<span>Enlarge</span>`;
-    button.addEventListener('click', () => open(pre));
-    wrap.append(button, pre);
+    button.addEventListener('click', () => open(diagram));
+    wrap.append(button, diagram);
     // Clicking the diagram opens it too, unless some of its text was just selected
-    pre.addEventListener('click', () => {
-      if (window.getSelection()?.isCollapsed !== false) open(pre);
+    diagram.addEventListener('click', () => {
+      if (window.getSelection()?.isCollapsed !== false) open(diagram);
     });
   }
 }
@@ -148,12 +153,12 @@ function makeViewer() {
 }
 
 // --- Open, fit, zoom, draw -----------------------------------------------------------
-function open(pre) {
-  const svg = drawn(pre);
+function open(diagram) {
+  const svg = drawn(diagram);
   if (!svg) return; // not drawn yet, or a diagram with an error
   if (!dialog) makeViewer();
   // A copy with its own ids, so nothing clashes with the diagram on the page (arrow heads
-  // and styles point to the ids). It is our own diagram, drawn by Mermaid from our pages.
+  // and styles point to the ids). It is our own diagram, drawn from our own pages.
   const id = svg.id;
   layer.innerHTML = id && id.length >= 8 ? svg.outerHTML.split(id).join(`${id}-zoom`) : svg.outerHTML;
   const copy = layer.firstElementChild;

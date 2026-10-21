@@ -27,10 +27,11 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 		flex-direction: column;
 		margin: 1rem 0 2rem;
 	}
-	.diagram-zoom > pre.mermaid {
+	.diagram-zoom > :is(pre.mermaid, .kit-diagram) {
 		margin: 0;
 	}
-	.diagram-zoom > pre.mermaid[data-processed]:has(> svg) {
+	.diagram-zoom > pre.mermaid[data-processed]:has(> svg),
+	.diagram-zoom > .kit-diagram {
 		cursor: zoom-in;
 	}
 	.diagram-zoom-open {
@@ -119,6 +120,7 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 		position: relative;
 		flex: 1;
 		overflow: hidden;
+		background: var(--pele-bg, var(--sl-color-bg));
 		touch-action: none;
 		cursor: grab;
 		user-select: none;
