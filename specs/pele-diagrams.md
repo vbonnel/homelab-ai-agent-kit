@@ -1,6 +1,6 @@
 # Docs websites: diagrams drawn by pele, in Atlassian colours
 
-Status: planning
+Status: approved
 Size: normal
 Database change: no
 New settings (.env keys): none
