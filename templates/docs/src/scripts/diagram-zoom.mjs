@@ -1,23 +1,27 @@
 // agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
 // delete this line to keep your own version instead.
-// Full-screen viewer for the Mermaid diagrams. Each diagram gets an "Enlarge" button (and
-// opens when clicked): a <dialog> where it can be zoomed (wheel, pinch, + -, double click)
-// and moved (drag). Loaded on every page by components/MarkdownContent.astro; pages
-// without diagrams: nothing happens.
+// Full-screen viewer for the Mermaid diagrams and the pictures in the pages. Each diagram gets
+// an "Enlarge" button (and opens when clicked); a picture opens when clicked (or Enter / Space
+// when it has the keyboard focus). The viewer is a <dialog> where it can be zoomed (wheel,
+// pinch, + -, double click) and moved (drag). Loaded on every page by
+// components/MarkdownContent.astro; pages without diagrams or pictures: nothing happens.
 // Diagrams drawn when the website is built (src/diagrams/, pele) are an <svg> inside
 // <div class="kit-diagram">. Sites still on astro-mermaid: it draws each diagram as an <svg>
 // inside <pre class="mermaid">, then sets data-processed; a theme change draws it again (new
 // innerHTML), so the button sits outside the diagram's element.
+// Pictures: the <img> of the page content (Astro's .webp). A copy is shown at most at its own
+// size when fitted (no blurry blow-up), and can still be zoomed in.
 import { fitView, zoomAt, zoomLimits } from './zoom-math.mjs';
 
 const STEP = 1.25; // one press of + or -, or a key
 const HINT = 'Scroll or pinch to zoom, drag to move, Esc to close';
 const ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
 
-let dialog, stage, layer, level;
+let dialog, stage, layer, level, fitButton;
 let view = { scale: 1, x: 0, y: 0 };
 let limits = { min: 0.5, max: 4 };
-let size = { w: 0, h: 0 };   // the diagram's own size
+let size = { w: 0, h: 0 };   // the diagram's or picture's own size
+let most = Infinity;         // largest fitted scale: 1 for pictures
 let room = { w: 0, h: 0 };   // the viewer's size
 const pointers = new Map();  // fingers or mouse buttons down: id -> { x, y }
 let gesture = null;          // where they were at the last move
@@ -27,6 +31,16 @@ let gesture = null;          // where they were at the last move
 const DIAGRAMS = 'div.kit-diagram, pre.mermaid';
 const drawn = (diagram) => (diagram.matches('pre.mermaid') && !diagram.hasAttribute('data-processed')
   ? null : diagram.querySelector(':scope > svg'));
+
+// Pictures in the page content. Left alone: pictures in a link or a button (the click keeps its
+// job), a diagram's own, pictures handled by the starlight-image-zoom add-on (a site that still
+// uses it), pictures marked data-zoom="off", data-zoom-off (the add-on's mark) or class no-zoom
+// (on the picture or around it), and icons (48 x 48 pixels or less).
+const PICTURES = '.sl-markdown-content img';
+const LEFT_ALONE = 'a, button, .kit-diagram, pre.mermaid, starlight-image-zoom-zoomable, '
+  + '[data-zoom="off"], [data-zoom-off], .no-zoom';
+const ICON_PIXELS = 48;
+const big = (img) => img.naturalWidth > ICON_PIXELS || img.naturalHeight > ICON_PIXELS; // 0 x 0: not loaded or broken
 
 // --- On the page: a wrapper and a button for each diagram ---------------------------
 function setup() {
@@ -47,6 +61,25 @@ function setup() {
       if (window.getSelection()?.isCollapsed !== false) open(diagram);
     });
   }
+  for (const img of document.querySelectorAll(PICTURES)) {
+    if (img.classList.contains('image-zoom') || img.closest(LEFT_ALONE)) continue;
+    // Pictures loaded later (lazy, further down the page) are checked when they arrive
+    if (img.complete) { if (big(img)) zoomable(img); }
+    else img.addEventListener('load', () => { if (big(img)) zoomable(img); }, { once: true });
+  }
+}
+
+// The picture itself is the button: zoom-in pointer, Tab reaches it, click / Enter / Space open it
+function zoomable(img) {
+  img.classList.add('image-zoom');
+  img.tabIndex = 0;
+  if (!img.title) img.title = 'Click to enlarge';
+  img.addEventListener('click', () => open(img));
+  img.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    open(img);
+  });
 }
 
 // --- The viewer: made once, on the first open ---------------------------------------
@@ -76,7 +109,7 @@ function makeViewer() {
     hint, level,
     tool('Zoom out (-)', '−', () => zoomCentre(1 / STEP)),
     tool('Zoom in (+)', '+', () => zoomCentre(STEP)),
-    tool('Show the whole diagram (0)', 'Fit', fit),
+    fitButton = tool('Show the whole diagram (0)', 'Fit', fit),
     tool('Close (Esc)', '✕', () => dialog.close()),
   );
   stage = document.createElement('div');
@@ -147,13 +180,18 @@ function makeViewer() {
     if (!dialog.open) return;
     const before = room;
     measureRoom();
-    limits = zoomLimits(fitView(size, room));
+    limits = zoomLimits(fitView(size, room, 24, most));
     show({ ...view, x: view.x + (room.w - before.w) / 2, y: view.y + (room.h - before.h) / 2 });
   });
 }
 
 // --- Open, fit, zoom, draw -----------------------------------------------------------
-function open(diagram) {
+function open(item) {
+  if (item.tagName === 'IMG') openPicture(item);
+  else openDiagram(item);
+}
+
+function openDiagram(diagram) {
   const svg = drawn(diagram);
   if (!svg) return; // not drawn yet, or a diagram with an error
   if (!dialog) makeViewer();
@@ -170,6 +208,34 @@ function open(diagram) {
   copy.setAttribute('width', String(size.w));
   copy.setAttribute('height', String(size.h));
   copy.style.maxWidth = 'none';
+  showViewer('Diagram, full screen', 'Show the whole diagram (0)', Infinity);
+}
+
+function openPicture(img) {
+  if (!img.naturalWidth || !img.naturalHeight) return; // not loaded, or broken
+  if (!dialog) makeViewer();
+  // The same file as on the page (currentSrc: the size the browser picked), at its own size
+  const copy = document.createElement('img');
+  copy.src = img.currentSrc || img.src;
+  copy.alt = img.alt;
+  copy.draggable = false;
+  size = { w: img.naturalWidth, h: img.naturalHeight };
+  copy.width = size.w;
+  copy.height = size.h;
+  copy.style.width = `${size.w}px`;
+  copy.style.height = `${size.h}px`;
+  copy.style.maxWidth = 'none';
+  layer.replaceChildren(copy);
+  showViewer('Picture, full screen', 'Show the whole picture (0)', 1);
+}
+
+// Open the viewer, its labels saying what it shows; closing gives the keyboard focus back to
+// what opened it (the <dialog> does that by itself)
+function showViewer(label, fitLabel, largest) {
+  dialog.setAttribute('aria-label', label);
+  fitButton.title = fitLabel;
+  fitButton.setAttribute('aria-label', fitLabel);
+  most = largest;
   dialog.showModal();
   fit();
 }
@@ -180,7 +246,7 @@ function measureRoom() {
 
 function fit() {
   measureRoom();
-  const whole = fitView(size, room);
+  const whole = fitView(size, room, 24, most);
   limits = zoomLimits(whole);
   show(whole);
 }

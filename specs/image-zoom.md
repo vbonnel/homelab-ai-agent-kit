@@ -1,6 +1,6 @@
 # Docs websites: open the page images full screen in the diagram viewer
 
-Status: approved
+Status: building
 Size: normal
 Database change: no
 New settings (.env keys): none
