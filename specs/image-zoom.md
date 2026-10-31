@@ -1,6 +1,6 @@
 # Docs websites: open the page images full screen in the diagram viewer
 
-Status: building
+Status: tests passed
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -45,14 +45,15 @@ look and work the same, with no new npm package.
     click, Enter or Space opens it.
   - `open(item)` handles both kinds: a diagram as today; a picture: an `<img>` copy in the viewer
     (`currentSrc`, so the best size Astro made; same `alt`; not draggable by the browser), sized from
-    its own pixel size (`naturalWidth` / `naturalHeight`), fitted with `most = 1`. A picture that
-    has not loaded (still downloading or broken) is opened once it loads, or not at all if it fails.
+    its own pixel size (`naturalWidth` / `naturalHeight`), fitted with `most = 1`. Only loaded
+    pictures become clickable (lazy ones when they arrive); a broken picture never opens.
   - The viewer's label and Fit button say "picture" or "diagram" depending on what is open.
-  - After closing, the focus goes back to the picture or diagram (keyboard users don't lose their
-    place). The viewer is still made once, on the first open.
+  - After closing, the focus goes back to the picture or diagram (the `<dialog>` does it by
+    itself). The viewer is still made once, on the first open.
 - `templates/docs/src/components/MarkdownContent.astro`: comment updated (diagrams and pictures);
   styles: `img.image-zoom { cursor: zoom-in }`, a focus ring with the accent colour,
   `.diagram-zoom-layer > img { display: block; max-width: none }`.
+- `tests/test-docs-features.mjs`: see below.
 - `README.md`: the docs website line says pictures open in the same viewer; the upgrade text names
   "picture zoom" with the other docs features.
 

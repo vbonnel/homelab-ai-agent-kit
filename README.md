@@ -18,8 +18,9 @@ One command to build software using AI in your SWE projects:
   `:::service`, `:::ui`, `:::data`, `:::queue`, `:::external`, `:::person`, `:::new`
   or `:::risk`; C4 diagrams are coloured by themselves. A diagram with an error stops
   the build (with the page and line), so it is never merged. Each diagram has an
-  **Enlarge** button (zoom and move it full screen), and a **version pill** next to
-  the title shows which saved version the website was built from.
+  **Enlarge** button (zoom and move it full screen), pictures in the pages open in
+  the same viewer when clicked, and a **version pill** next to the title shows which
+  saved version the website was built from.
 
 ---
 
@@ -140,7 +141,7 @@ What `kit update` does safely in existing containers:
 - **Preserves your credentials**: never overwrites `~/.config/agent-kit/secrets.env` or project `.env` files.
 
 Projects are never changed by `kit update`. To give a docs website made with an older
-kit the newest docs features (diagrams drawn by pele, diagram zoom, version pill), run this
+kit the newest docs features (diagrams drawn by pele, diagram and picture zoom, version pill), run this
 in the project:
 
 ```
@@ -173,7 +174,7 @@ or maths in labels show as plain text.
 | `consult usage` | shows token and estimated cost usage for specialist calls |
 | `kit docs url` | shows the docs website address |
 | `kit docs update ["msg"]` | rebuilds docs website after manual edits and saves |
-| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram zoom, version pill) to an existing docs website |
+| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, version pill) to an existing docs website |
 | `kit update` | updates the kit from GitHub (preserves config and secrets) |
 
 ---
@@ -191,7 +192,7 @@ claude/skills/feature/      the /feature command
 claude/skills/consult/      the /consult command for specialist delegation
 claude/skills/init-project/ the /init-project command + project templates
 codex/AGENTS.md             global rules for Codex (linked into ~/.codex/AGENTS.md)
-templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram zoom, version pill)
+templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, version pill)
 lib/                        helpers (consult.mjs, docs web server, docs upgrade, settings merge)
 ```
 
