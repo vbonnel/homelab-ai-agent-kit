@@ -84,7 +84,7 @@ In `tests/test-docs-features.mjs` (no browser, no network):
 ## Implementation notes
 - LF line endings, short plain comments like the rest of the kit; all three files keep their
   `agent-kit: managed file` marker.
-- Files written from the Proxmox host into CT 108: `chown 100000:100000` before `kit save`.
 - After the merge: push to GitHub (owner's token), then `kit update` in the containers and
-  `kit docs upgrade` in each project through `/feature`. The Fablab website (pae-docs) can then drop
-  its `starlight-image-zoom` add-on in its own feature; until it does, its pictures keep using the add-on.
+  `kit docs upgrade` in each project through `/feature`. A website that uses the
+  `starlight-image-zoom` add-on can then drop it in its own feature; until it does, its pictures
+  keep using the add-on.
