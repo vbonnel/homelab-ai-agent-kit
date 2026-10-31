@@ -27,3 +27,9 @@ export function zoomAt(view, factor, point, limits) {
   const k = scale / view.scale;
   return { scale, x: point.x - (point.x - view.x) * k, y: point.y - (point.y - view.y) * k };
 }
+
+// Is the click (or tap) `now` the second of a double click? `last` is the click before
+// ({ x, y, t } in pixels and milliseconds, or null): soon enough after it and close to it.
+export function isDoubleClick(last, now, time = 300, near = 30) {
+  return Boolean(last) && now.t - last.t < time && Math.hypot(now.x - last.x, now.y - last.y) < near;
+}

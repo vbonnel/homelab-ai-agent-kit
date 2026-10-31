@@ -12,7 +12,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fitView, zoomAt, zoomLimits } from '../templates/docs/src/scripts/zoom-math.mjs';
+import { fitView, isDoubleClick, zoomAt, zoomLimits } from '../templates/docs/src/scripts/zoom-math.mjs';
 import { docsVersion } from '../templates/docs/src/version.mjs';
 import { drawCode, drawDiagrams, diagramError, isDiagram, linesBefore } from '../templates/docs/src/diagrams/draw.mjs';
 import {
@@ -139,6 +139,14 @@ test('zoom: the spot under the pointer stays, in then out gives the start back, 
   assert.ok(near(zoomAt(start, 0.001, point, limits).scale, limits.min));
 });
 
+test('double click: soon and close to the click before; otherwise a single click', () => {
+  const first = { x: 100, y: 100, t: 1000 };
+  assert.equal(isDoubleClick(null, first), false, 'nothing before: single');
+  assert.equal(isDoubleClick(first, { x: 105, y: 98, t: 1200 }), true, 'soon and close: double');
+  assert.equal(isDoubleClick(first, { x: 105, y: 98, t: 1400 }), false, 'too late: single');
+  assert.equal(isDoubleClick(first, { x: 200, y: 100, t: 1100 }), false, 'too far: single');
+});
+
 test('fit for pictures (most = 1): a small one at its own size, a big one inside the viewer', () => {
   const stage = { w: 1200, h: 800 };
   const small = fitView({ w: 300, h: 200 }, stage, 24, 1);
@@ -201,6 +209,10 @@ test('template: pictures open in the same viewer, with the skip rules', () => {
     "e.key !== 'Enter' && e.key !== ' '", 'img.tabIndex = 0', 'img.currentSrc',
     "'Show the whole picture (0)', 1)", "'Show the whole diagram (0)', Infinity)",
     'fitView(size, room, 24, most)',
+    // a click that did not move closes (after the double-click wait); a double click zooms
+    'press.moved = true', 'press.several = true', '!press.moved && !press.several',
+    'isDoubleClick(lastClick, now, DOUBLE_TIME)', 'setTimeout(() => dialog.close(), DOUBLE_TIME)',
+    'clearTimeout(closeTimer)',
   ]) {
     assert.ok(viewer.includes(needed), needed);
   }

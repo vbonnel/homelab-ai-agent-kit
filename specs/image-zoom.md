@@ -47,6 +47,11 @@ look and work the same, with no new npm package.
     (`currentSrc`, so the best size Astro made; same `alt`; not draggable by the browser), sized from
     its own pixel size (`naturalWidth` / `naturalHeight`), fitted with `most = 1`. Only loaded
     pictures become clickable (lazy ones when they arrive); a broken picture never opens.
+  - Owner's request after trying it: a click anywhere in the viewer (a press that did not move more
+    than 6 pixels, one finger) closes it, 0.3 s later so a double click can still come; a double
+    click or double tap zooms in there (now also on phones: the viewer counts the clicks itself,
+    `isDoubleClick` in zoom-math.mjs, instead of the browser's dblclick). Dragging and pinching
+    never close it. Same for diagrams. Hint: "..., click or Esc to close".
   - The viewer's label and Fit button say "picture" or "diagram" depending on what is open.
   - After closing, the focus goes back to the picture or diagram (the `<dialog>` does it by
     itself). The viewer is still made once, on the first open.
@@ -62,6 +67,7 @@ In `tests/test-docs-features.mjs` (no browser, no network):
 - `fitView` with `most = 1`: a picture smaller than the viewer is shown at its own size, centred;
   a picture bigger than the viewer fits inside it with the padding, as before; without `most` the
   results are the same as today (the existing fit tests stay as they are).
+- `isDoubleClick`: soon and close -> double; too late or too far, or no click before -> single.
 - Template check: the viewer has the pictures selector, the skip rules (link, `data-zoom="off"`,
   `no-zoom`, the add-on's element), keyboard opening, and `most = 1` for pictures; MarkdownContent
   has the `img.image-zoom` style.
@@ -70,7 +76,8 @@ In `tests/test-docs-features.mjs` (no browser, no network):
 - [ ] A picture in a page opens full screen in the viewer, zooms and moves like a diagram, Esc closes
 - [ ] Pictures in links, icons, pictures marked `data-zoom="off"` and diagrams' own pictures don't open
 - [ ] A small picture is shown at its own size; a big one fits the screen
-- [ ] Diagrams work as before
+- [ ] A click in the viewer closes it; a drag or pinch does not; a double click zooms in
+- [ ] Diagrams work as before (and close on a click too)
 - [ ] No address, host name or project detail in the changed files
 - [ ] `scripts/test.sh` passes
 
