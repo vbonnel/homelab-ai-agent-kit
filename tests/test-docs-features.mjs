@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tests for the docs features (diagrams drawn at build time, diagram zoom, version pill) and
+// Tests for the docs features (diagrams drawn at build time, diagram and picture zoom, version pill) and
 // `kit docs upgrade`.
 // Run with: node --test tests/test-docs-features.mjs
 // Temp folders and throwaway git repos only: no network, no npm install, no browser. pele is
@@ -12,7 +12,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fitView, zoomAt, zoomLimits } from '../templates/docs/src/scripts/zoom-math.mjs';
+import { fitView, isDoubleClick, zoomAt, zoomLimits } from '../templates/docs/src/scripts/zoom-math.mjs';
 import { docsVersion } from '../templates/docs/src/version.mjs';
 import { drawCode, drawDiagrams, diagramError, isDiagram, linesBefore } from '../templates/docs/src/diagrams/draw.mjs';
 import {
@@ -139,6 +139,28 @@ test('zoom: the spot under the pointer stays, in then out gives the start back, 
   assert.ok(near(zoomAt(start, 0.001, point, limits).scale, limits.min));
 });
 
+test('double click: soon and close to the click before; otherwise a single click', () => {
+  const first = { x: 100, y: 100, t: 1000 };
+  assert.equal(isDoubleClick(null, first), false, 'nothing before: single');
+  assert.equal(isDoubleClick(first, { x: 105, y: 98, t: 1200 }), true, 'soon and close: double');
+  assert.equal(isDoubleClick(first, { x: 105, y: 98, t: 1400 }), false, 'too late: single');
+  assert.equal(isDoubleClick(first, { x: 200, y: 100, t: 1100 }), false, 'too far: single');
+});
+
+test('fit for pictures (most = 1): a small one at its own size, a big one inside the viewer', () => {
+  const stage = { w: 1200, h: 800 };
+  const small = fitView({ w: 300, h: 200 }, stage, 24, 1);
+  assert.equal(small.scale, 1, 'not blown up');
+  assert.ok(near(small.x, 450) && near(small.y, 300), 'centred');
+  for (const content of [{ w: 4000, h: 3000 }, { w: 1000, h: 3000 }]) {
+    const v = fitView(content, stage, 24, 1);
+    assert.deepEqual(v, fitView(content, stage, 24), 'same as a diagram when it is bigger than the viewer');
+    assert.ok(v.scale < 1 && (near(v.x, 24) || near(v.y, 24)), 'fits inside with the padding');
+  }
+  assert.ok(fitView({ w: 300, h: 200 }, stage, 24).scale > 1, 'diagrams still grow to fill the viewer');
+  assert.equal(fitView({ w: 0, h: 0 }, stage, 24, 1).scale, 1, 'nothing loaded: usable view');
+});
+
 // --- Version pill -----------------------------------------------------------------------
 test('version: the merge save id and its date; empty values without history', (t) => {
   const T = tempDir(t);
@@ -175,6 +197,29 @@ test('template: config sets both components, every kit file has the marker', () 
   for (const needed of ["'div.kit-diagram, pre.mermaid'", 'querySelectorAll(DIAGRAMS)', 'showModal()', "from './zoom-math.mjs'"]) {
     assert.ok(viewer.includes(needed), needed);
   }
+});
+
+test('template: pictures open in the same viewer, with the skip rules', () => {
+  const viewer = readFileSync(join(TEMPLATE, 'src/scripts/diagram-zoom.mjs'), 'utf8');
+  execFileSync(process.execPath, ['--check', join(TEMPLATE, 'src/scripts/diagram-zoom.mjs')]); // valid code
+  for (const needed of [
+    "'.sl-markdown-content img'", 'querySelectorAll(PICTURES)', 'img.closest(LEFT_ALONE)',
+    "a, button, .kit-diagram, pre.mermaid, starlight-image-zoom-zoomable, ",
+    `'[data-zoom="off"], [data-zoom-off], .no-zoom'`, 'ICON_PIXELS = 48',
+    "e.key !== 'Enter' && e.key !== ' '", 'img.tabIndex = 0', 'img.currentSrc',
+    "'Show the whole picture (0)', 1)", "'Show the whole diagram (0)', Infinity)",
+    'fitView(size, room, 24, most)',
+    // a click that did not move closes (after the double-click wait); a double click zooms
+    'press.moved = true', 'press.several = true', '!press.moved && !press.several',
+    'isDoubleClick(lastClick, now, DOUBLE_TIME)', 'setTimeout(() => dialog.close(), DOUBLE_TIME)',
+    'clearTimeout(closeTimer)',
+  ]) {
+    assert.ok(viewer.includes(needed), needed);
+  }
+  assert.ok(!viewer.includes('fitView(size, room)'), 'every fit uses the largest scale of what is open');
+  const content = readFileSync(join(TEMPLATE, 'src/components/MarkdownContent.astro'), 'utf8');
+  assert.match(content, /\.sl-markdown-content img\.image-zoom \{\s*cursor: zoom-in;/);
+  assert.match(content, /\.diagram-zoom-layer > img \{[^}]*max-width: none;/);
 });
 
 test('template: diagrams drawn by the kit integration (pele), no astro-mermaid left', () => {
