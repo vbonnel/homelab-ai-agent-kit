@@ -1,6 +1,6 @@
 # Docs websites: open the page images full screen in the diagram viewer
 
-Status: tests passed
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -73,13 +73,13 @@ In `tests/test-docs-features.mjs` (no browser, no network):
   has the `img.image-zoom` style.
 
 ## Acceptance checks
-- [ ] A picture in a page opens full screen in the viewer, zooms and moves like a diagram, Esc closes
-- [ ] Pictures in links, icons, pictures marked `data-zoom="off"` and diagrams' own pictures don't open
-- [ ] A small picture is shown at its own size; a big one fits the screen
-- [ ] A click in the viewer closes it; a drag or pinch does not; a double click zooms in
-- [ ] Diagrams work as before (and close on a click too)
-- [ ] No address, host name or project detail in the changed files
-- [ ] `scripts/test.sh` passes
+- [x] A picture in a page opens full screen in the viewer, zooms and moves like a diagram, Esc closes
+- [x] Pictures in links, icons, pictures marked `data-zoom="off"` and diagrams' own pictures don't open
+- [x] A small picture is shown at its own size; a big one fits the screen
+- [x] A click in the viewer closes it; a drag or pinch does not; a double click zooms in
+- [x] Diagrams work as before (and close on a click too)
+- [x] No address, host name or project detail in the changed files
+- [x] `scripts/test.sh` passes
 
 ## Implementation notes
 - LF line endings, short plain comments like the rest of the kit; all three files keep their
