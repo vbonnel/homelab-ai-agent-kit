@@ -1,6 +1,6 @@
 # Docs websites: open the page images full screen in the diagram viewer
 
-Status: planning
+Status: approved
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -37,8 +37,9 @@ look and work the same, with no new npm package.
 - `templates/docs/src/scripts/diagram-zoom.mjs`:
   - New `PICTURES = '.sl-markdown-content img'`. A picture is left alone when it is inside a link or
     a button (the click keeps its job), inside a kit diagram, inside an element made by the
-    `starlight-image-zoom` add-on (a site that still uses it: no double viewer), marked
-    `data-zoom="off"` or class `no-zoom`, or small (48 x 48 pixels or less: icons). A picture not
+    `starlight-image-zoom` add-on (`starlight-image-zoom-zoomable`: a site that still uses it gets no
+    double viewer), marked `data-zoom="off"`, `data-zoom-off` (the add-on's own mark) or class
+    `no-zoom`, or small (48 x 48 pixels or less: icons). A picture not
     loaded yet (lazy) is checked again when it loads.
   - Each picture kept gets class `image-zoom`, `tabindex="0"`, a hover text "Click to enlarge";
     click, Enter or Space opens it.
