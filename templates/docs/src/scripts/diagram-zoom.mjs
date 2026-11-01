@@ -1,14 +1,14 @@
 // agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
 // delete this line to keep your own version instead.
-// Full-screen viewer for the Mermaid diagrams and the pictures in the pages. Each diagram gets
-// an "Enlarge" button (and opens when clicked); a picture opens when clicked (or Enter / Space
-// when it has the keyboard focus). The viewer is a <dialog> where it can be zoomed (wheel,
+// Full-screen viewer for the Mermaid diagrams and the pictures in the pages. A diagram or a
+// picture opens when clicked (or Enter / Space when it has the keyboard focus: Tab reaches it);
+// no button on the page. The viewer is a <dialog> where it can be zoomed (wheel,
 // pinch, + -, double click) and moved (drag); a click (not a drag) closes it. Loaded on every page by
 // components/MarkdownContent.astro; pages without diagrams or pictures: nothing happens.
 // Diagrams drawn when the website is built (src/diagrams/, pele) are an <svg> inside
 // <div class="kit-diagram">. Sites still on astro-mermaid: it draws each diagram as an <svg>
 // inside <pre class="mermaid">, then sets data-processed; a theme change draws it again (new
-// innerHTML), so the button sits outside the diagram's element.
+// innerHTML), so the diagram keeps its own element and listeners (only its inside is redrawn).
 // Pictures: the <img> of the page content (Astro's .webp). A copy is shown at most at its own
 // size when fitted (no blurry blow-up), and can still be zoomed in.
 import { fitView, isDoubleClick, zoomAt, zoomLimits } from './zoom-math.mjs';
@@ -17,7 +17,6 @@ const STEP = 1.25; // one press of + or -, or a key
 const HINT = 'Scroll or pinch to zoom, drag to move, click or Esc to close';
 const CLICK_MOVE = 6;   // pixels a click may move and still be a click (more: a drag)
 const DOUBLE_TIME = 300; // milliseconds: a single click closes after this, unless a second one comes
-const ICON = '<svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
 
 let dialog, stage, layer, level, fitButton;
 let view = { scale: 1, x: 0, y: 0 };
@@ -47,23 +46,24 @@ const LEFT_ALONE = 'a, button, .kit-diagram, pre.mermaid, starlight-image-zoom-z
 const ICON_PIXELS = 48;
 const big = (img) => img.naturalWidth > ICON_PIXELS || img.naturalHeight > ICON_PIXELS; // 0 x 0: not loaded or broken
 
-// --- On the page: a wrapper and a button for each diagram ---------------------------
+// --- On the page: each diagram and picture is its own button --------------------------
 function setup() {
   for (const diagram of document.querySelectorAll(DIAGRAMS)) {
     if (diagram.parentElement?.classList.contains('diagram-zoom')) continue;
-    const wrap = document.createElement('div');
+    const wrap = document.createElement('div'); // keeps the diagram's spacing on the page
     wrap.className = 'diagram-zoom';
     diagram.before(wrap);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'diagram-zoom-open';
-    button.title = 'Open the diagram full screen to zoom';
-    button.innerHTML = `${ICON}<span>Enlarge</span>`;
-    button.addEventListener('click', () => open(diagram));
-    wrap.append(button, diagram);
-    // Clicking the diagram opens it too, unless some of its text was just selected
+    wrap.append(diagram);
+    diagram.tabIndex = 0;
+    diagram.title = 'Click to enlarge';
+    // Clicking the diagram opens it, unless some of its text was just selected
     diagram.addEventListener('click', () => {
       if (window.getSelection()?.isCollapsed !== false) open(diagram);
+    });
+    diagram.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open(diagram);
     });
   }
   for (const img of document.querySelectorAll(PICTURES)) {

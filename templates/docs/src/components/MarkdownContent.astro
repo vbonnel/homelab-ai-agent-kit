@@ -4,8 +4,7 @@
  * delete this line to keep your own version instead.
  *
  * Page content: Starlight's own MarkdownContent, plus the full-screen viewer for the
- * Mermaid diagrams (an "Enlarge" button on each diagram) and the pictures (click one; Tab +
- * Enter works too). Zoom and move in the viewer.
+ * Mermaid diagrams and the pictures: click one (Tab + Enter works too); no button on the page. Zoom and move in the viewer.
  *
  * Set in astro.config.mjs (`components: { MarkdownContent: ... }`). The code is in
  * src/scripts/diagram-zoom.mjs (made in the browser, so the styles below are global).
@@ -22,8 +21,7 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 </script>
 
 <style is:global>
-	/* On the page: the diagram as before, the button just above its right corner (so it
-	   never hides part of a wide diagram) */
+	/* On the page: the diagram as before; it is the button (zoom-in pointer, focus ring) */
 	.diagram-zoom {
 		display: flex;
 		flex-direction: column;
@@ -36,6 +34,10 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 	.diagram-zoom > .kit-diagram {
 		cursor: zoom-in;
 	}
+	.diagram-zoom > :is(pre.mermaid, .kit-diagram):focus-visible {
+		outline: 2px solid var(--sl-color-text-accent);
+		outline-offset: 2px;
+	}
 	/* Pictures: the picture itself opens the viewer */
 	.sl-markdown-content img.image-zoom {
 		cursor: zoom-in;
@@ -43,26 +45,6 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 	.sl-markdown-content img.image-zoom:focus-visible {
 		outline: 2px solid var(--sl-color-text-accent);
 		outline-offset: 2px;
-	}
-	.diagram-zoom-open {
-		align-self: flex-end;
-		margin: 0 0 0.25rem;
-		display: flex;
-		align-items: center;
-		gap: 0.35rem;
-		padding: 0.25rem 0.6rem;
-		border: 1px solid var(--sl-color-accent);
-		border-radius: 999px;
-		background: var(--sl-color-accent-low);
-		color: var(--sl-color-text-accent);
-		font-size: var(--sl-text-sm);
-		font-weight: 600;
-		line-height: 1.4;
-		cursor: pointer;
-	}
-	.diagram-zoom-open:hover,
-	.diagram-zoom-open:focus-visible {
-		border-color: var(--sl-color-text-accent);
 	}
 
 	/* The viewer: the whole window, a bar of buttons on top, the diagram below */
@@ -160,11 +142,6 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 		.diagram-zoom-level {
 			flex: 1;
 			text-align: left;
-		}
-	}
-	@media print {
-		.diagram-zoom-open {
-			display: none;
 		}
 	}
 </style>
