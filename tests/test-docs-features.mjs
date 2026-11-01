@@ -84,6 +84,12 @@ export default defineConfig({
 });
 `;
 const TEMPLATE_CONFIG = readFileSync(join(TEMPLATE, 'astro.config.mjs'), 'utf8');
+// PREVIOUS_CONFIG once upgraded by this kit: its comment no longer speaks of an Enlarge button
+const PREVIOUS_UPGRADED = PREVIOUS_CONFIG.replace(
+  '      // Kit docs features (kit docs upgrade): the docs version next to the title, and an\n'
+  + '      // "Enlarge" button on each diagram (zoom and move it full screen)\n',
+  '      // Kit docs features (kit docs upgrade): the docs version next to the title, and a\n'
+  + '      // full-screen viewer: click a diagram or a picture to zoom and move it\n');
 
 const tempDir = (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'kit-docs-'));
@@ -201,7 +207,7 @@ test('template: config sets both components, every kit file has the marker', () 
 
 test('template: no Enlarge button, a diagram is its own button (click, Tab + Enter)', () => {
   const viewer = readFileSync(join(TEMPLATE, 'src/scripts/diagram-zoom.mjs'), 'utf8');
-  for (const gone of ['Enlarge', "createElement('button')", 'diagram-zoom-open']) {
+  for (const gone of ['Enlarge', 'diagram-zoom-open']) {
     assert.ok(!viewer.includes(gone), `no ${gone}`);
   }
   for (const needed of ['diagram.tabIndex = 0', "diagram.addEventListener('keydown'", "diagram.addEventListener('click'"]) {
@@ -210,7 +216,7 @@ test('template: no Enlarge button, a diagram is its own button (click, Tab + Ent
   const content = readFileSync(join(TEMPLATE, 'src/components/MarkdownContent.astro'), 'utf8');
   assert.ok(!content.includes('diagram-zoom-open'), 'no button styles left');
   assert.match(content, /\.diagram-zoom > :is\(pre\.mermaid, \.kit-diagram\):focus-visible \{/);
-  for (const file of ['templates/docs/astro.config.mjs', 'lib/docs-upgrade.mjs', 'README.md']) {
+  for (const file of ['templates/docs/astro.config.mjs', 'README.md']) {
     assert.ok(!readFileSync(join(KIT_DIR, file), 'utf8').includes('"Enlarge" button'), file);
   }
 });
@@ -353,7 +359,7 @@ test('addComponents: the old template config gets both components, once', () => 
   const r = addComponents(OLD_CONFIG);
   assert.equal(r.problem, '');
   assert.deepEqual(r.added, ['SiteTitle', 'MarkdownContent']);
-  assert.equal(r.text, PREVIOUS_CONFIG);
+  assert.equal(r.text, PREVIOUS_UPGRADED);
   const again = addComponents(r.text);
   assert.equal(again.text, r.text, 'a second run changes nothing');
   assert.deepEqual(again.added, []);
@@ -383,8 +389,16 @@ test('addComponents: a config it cannot read is left unchanged, with a problem',
 });
 
 // --- useKitDiagrams --------------------------------------------------------------------
+test('addComponents: the older kit comment (Enlarge button) is brought up to date, once', () => {
+  assert.notEqual(PREVIOUS_UPGRADED, PREVIOUS_CONFIG);
+  const r = addComponents(PREVIOUS_CONFIG);
+  assert.deepEqual({ added: r.added, problem: r.problem }, { added: [], problem: '' });
+  assert.equal(r.text, PREVIOUS_UPGRADED);
+  assert.equal(addComponents(r.text).text, r.text, 'a second run changes nothing');
+});
+
 test('useKitDiagrams: the kit\'s astro-mermaid lines become exactly the new template', () => {
-  const r = useKitDiagrams(PREVIOUS_CONFIG);
+  const r = useKitDiagrams(PREVIOUS_UPGRADED);
   assert.deepEqual({ switched: r.switched, from: r.from, kept: r.kept }, { switched: true, from: 'astro-mermaid', kept: '' });
   assert.equal(r.text, TEMPLATE_CONFIG);
   assert.equal(useKitDiagrams(addComponents(OLD_CONFIG).text).text, TEMPLATE_CONFIG, 'the oldest config too');
