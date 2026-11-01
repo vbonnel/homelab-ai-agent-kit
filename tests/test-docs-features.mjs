@@ -199,6 +199,22 @@ test('template: config sets both components, every kit file has the marker', () 
   }
 });
 
+test('template: no Enlarge button, a diagram is its own button (click, Tab + Enter)', () => {
+  const viewer = readFileSync(join(TEMPLATE, 'src/scripts/diagram-zoom.mjs'), 'utf8');
+  for (const gone of ['Enlarge', "createElement('button')", 'diagram-zoom-open']) {
+    assert.ok(!viewer.includes(gone), `no ${gone}`);
+  }
+  for (const needed of ['diagram.tabIndex = 0', "diagram.addEventListener('keydown'", "diagram.addEventListener('click'"]) {
+    assert.ok(viewer.includes(needed), needed);
+  }
+  const content = readFileSync(join(TEMPLATE, 'src/components/MarkdownContent.astro'), 'utf8');
+  assert.ok(!content.includes('diagram-zoom-open'), 'no button styles left');
+  assert.match(content, /\.diagram-zoom > :is\(pre\.mermaid, \.kit-diagram\):focus-visible \{/);
+  for (const file of ['templates/docs/astro.config.mjs', 'lib/docs-upgrade.mjs', 'README.md']) {
+    assert.ok(!readFileSync(join(KIT_DIR, file), 'utf8').includes('"Enlarge" button'), file);
+  }
+});
+
 test('template: pictures open in the same viewer, with the skip rules', () => {
   const viewer = readFileSync(join(TEMPLATE, 'src/scripts/diagram-zoom.mjs'), 'utf8');
   execFileSync(process.execPath, ['--check', join(TEMPLATE, 'src/scripts/diagram-zoom.mjs')]); // valid code

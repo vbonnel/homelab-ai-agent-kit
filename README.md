@@ -17,10 +17,9 @@ One command to build software using AI in your SWE projects:
   System colours (Confluence, Jira) for light and dark. Mark what a box is with
   `:::service`, `:::ui`, `:::data`, `:::queue`, `:::external`, `:::person`, `:::new`
   or `:::risk`; C4 diagrams are coloured by themselves. A diagram with an error stops
-  the build (with the page and line), so it is never merged. Each diagram has an
-  **Enlarge** button (zoom and move it full screen), pictures in the pages open in
-  the same viewer when clicked, and a **version pill** next to the title shows which
-  saved version the website was built from.
+  the build (with the page and line), so it is never merged. Clicking a diagram or a
+  picture opens it full screen (zoom and move it; a click closes it), and a **version
+  pill** next to the title shows which saved version the website was built from.
 
 ---
 
