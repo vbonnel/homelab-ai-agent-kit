@@ -16,12 +16,15 @@ import { fitView, isDoubleClick, zoomAt, zoomLimits } from '../templates/docs/sr
 import { docsVersion } from '../templates/docs/src/version.mjs';
 import { drawCode, drawDiagrams, diagramError, isDiagram, linesBefore } from '../templates/docs/src/diagrams/draw.mjs';
 import {
-  MARKER, KIT_COMPONENTS, KIT_DIAGRAMS, addComponents, upgradeDocs, useKitDiagrams, usesKitDiagrams,
+  MARKER, KIT_COMPONENTS, KIT_DIAGRAMS, KIT_IMAGES, addComponents, addImagesScript, upgradeDocs, useKitDiagrams,
+  useKitImages, usesKitDiagrams, usesKitImages,
 } from '../lib/docs-upgrade.mjs';
+import { pageMarkdown } from '../templates/docs/src/scripts/page-markdown.mjs';
+import { findRefs, renameRefs, sitePictures, userFiles, withoutComments } from '../templates/docs/src/image-tools/rules.mjs';
 
 const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEMPLATE = join(KIT_DIR, 'templates/docs');
-const KIT_FILES = [...Object.values(KIT_COMPONENTS).flatMap((c) => c.files), ...KIT_DIAGRAMS.files];
+const KIT_FILES = [...Object.values(KIT_COMPONENTS).flatMap((c) => c.files), ...KIT_DIAGRAMS.files, ...KIT_IMAGES.files];
 const KINDS = ['service', 'ui', 'data', 'queue', 'external', 'person', 'new', 'risk'];
 const near = (a, b) => Math.abs(a - b) < 1e-6;
 
@@ -84,12 +87,24 @@ export default defineConfig({
 });
 `;
 const TEMPLATE_CONFIG = readFileSync(join(TEMPLATE, 'astro.config.mjs'), 'utf8');
-// PREVIOUS_CONFIG once upgraded by this kit: its comment no longer speaks of an Enlarge button
+const COMMENT_NOW = '      // Kit docs features (kit docs upgrade): the docs version next to the title, a full-screen\n'
+  + '      // viewer (click a diagram or a picture to zoom and move it), page actions next to the page\n'
+  + '      // title (copy as Markdown, print), the "On this page" style and a light / dark button\n';
+const NEW_ENTRIES = "        PageTitle: './src/components/PageTitle.astro',\n"
+  + "        TableOfContents: './src/components/TableOfContents.astro',\n"
+  + "        ThemeSelect: './src/components/ThemeSelect.astro',\n";
+// PREVIOUS_CONFIG once upgraded by this kit: the comment of today, the three newer components on top
 const PREVIOUS_UPGRADED = PREVIOUS_CONFIG.replace(
   '      // Kit docs features (kit docs upgrade): the docs version next to the title, and an\n'
   + '      // "Enlarge" button on each diagram (zoom and move it full screen)\n',
-  '      // Kit docs features (kit docs upgrade): the docs version next to the title, and a\n'
-  + '      // full-screen viewer: click a diagram or a picture to zoom and move it\n');
+  COMMENT_NOW).replace('      components: {\n', `      components: {\n${NEW_ENTRIES}`);
+// The template of the kit before the page actions and pictures (diagrams already drawn by pele)
+const LAST_CONFIG = TEMPLATE_CONFIG
+  .replace(COMMENT_NOW, '      // Kit docs features (kit docs upgrade): the docs version next to the title, and a\n'
+    + '      // full-screen viewer: click a diagram or a picture to zoom and move it\n')
+  .replace(NEW_ENTRIES, '')
+  .replace(/^import images from .*\n/m, '')
+  .replace(/^ {4}images\(\),.*\n/m, '');
 
 const tempDir = (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'kit-docs-'));
@@ -355,10 +370,10 @@ test('linesBefore: the lines of the file before the text Markdown got', () => {
 });
 
 // --- addComponents ---------------------------------------------------------------------
-test('addComponents: the old template config gets both components, once', () => {
+test('addComponents: the old template config gets every component, once', () => {
   const r = addComponents(OLD_CONFIG);
   assert.equal(r.problem, '');
-  assert.deepEqual(r.added, ['SiteTitle', 'MarkdownContent']);
+  assert.deepEqual(r.added, ['PageTitle', 'TableOfContents', 'ThemeSelect', 'SiteTitle', 'MarkdownContent']);
   assert.equal(r.text, PREVIOUS_UPGRADED);
   const again = addComponents(r.text);
   assert.equal(again.text, r.text, 'a second run changes nothing');
@@ -370,13 +385,19 @@ test('addComponents: an existing components block gets the missing entries, its 
     "      title: 'X',\n      components: {\n        Footer: './src/components/Footer.astro',\n      },\n");
   const r = addComponents(own);
   assert.equal(r.problem, '');
-  assert.ok(r.text.includes("      components: {\n        SiteTitle: './src/components/SiteTitle.astro',\n        MarkdownContent: './src/components/MarkdownContent.astro',\n        Footer: './src/components/Footer.astro',\n      },"));
+  assert.ok(r.text.includes(`      components: {\n${NEW_ENTRIES}        SiteTitle: './src/components/SiteTitle.astro',\n        MarkdownContent: './src/components/MarkdownContent.astro',\n        Footer: './src/components/Footer.astro',\n      },`));
   assert.equal(r.text.match(/components\s*:/g).length, 1, 'still one components block');
 
   const otherTitle = own.replace("Footer: './src/components/Footer.astro'", "SiteTitle: './src/components/MyTitle.astro'");
   const k = addComponents(otherTitle);
   assert.deepEqual(k.kept, ['SiteTitle']);
-  assert.deepEqual(k.added, ['MarkdownContent']);
+  assert.deepEqual(k.added, ['PageTitle', 'TableOfContents', 'ThemeSelect', 'MarkdownContent']);
+
+  // A project with its own page title (same path, its own file) or another file: both kept
+  const ownPageTitle = own.replace("Footer: './src/components/Footer.astro'", "PageTitle: './src/components/MyPageTitle.astro'");
+  const p = addComponents(ownPageTitle);
+  assert.deepEqual(p.kept, ['PageTitle']);
+  assert.ok(!p.added.includes('PageTitle') && p.text.includes("PageTitle: './src/components/MyPageTitle.astro'"));
   assert.ok(k.text.includes("SiteTitle: './src/components/MyTitle.astro'") && !k.text.includes('SiteTitle.astro'));
 });
 
@@ -392,7 +413,7 @@ test('addComponents: a config it cannot read is left unchanged, with a problem',
 test('addComponents: the older kit comment (Enlarge button) is brought up to date, once', () => {
   assert.notEqual(PREVIOUS_UPGRADED, PREVIOUS_CONFIG);
   const r = addComponents(PREVIOUS_CONFIG);
-  assert.deepEqual({ added: r.added, problem: r.problem }, { added: [], problem: '' });
+  assert.deepEqual({ added: r.added, problem: r.problem }, { added: ['PageTitle', 'TableOfContents', 'ThemeSelect'], problem: '' });
   assert.equal(r.text, PREVIOUS_UPGRADED);
   assert.equal(addComponents(r.text).text, r.text, 'a second run changes nothing');
 });
@@ -400,8 +421,8 @@ test('addComponents: the older kit comment (Enlarge button) is brought up to dat
 test('useKitDiagrams: the kit\'s astro-mermaid lines become exactly the new template', () => {
   const r = useKitDiagrams(PREVIOUS_UPGRADED);
   assert.deepEqual({ switched: r.switched, from: r.from, kept: r.kept }, { switched: true, from: 'astro-mermaid', kept: '' });
-  assert.equal(r.text, TEMPLATE_CONFIG);
-  assert.equal(useKitDiagrams(addComponents(OLD_CONFIG).text).text, TEMPLATE_CONFIG, 'the oldest config too');
+  assert.equal(useKitImages(r.text).text, TEMPLATE_CONFIG);
+  assert.equal(useKitImages(useKitDiagrams(addComponents(OLD_CONFIG).text).text).text, TEMPLATE_CONFIG, 'the oldest config too');
   const again = useKitDiagrams(r.text);
   assert.deepEqual(again, { text: r.text, switched: false, from: '', kept: '' }, 'a second run changes nothing');
 });
@@ -527,7 +548,126 @@ test('kit docs upgrade: in the real project and in a work copy (only the work co
   assert.ok(existsSync(join(P, 'docs/src/version.mjs')));
   assert.equal(npm.calls().length, 4, 'the real project gets pele too');
   assert.match(npm.calls()[2], /^.*\/docs\|install .*pele@\^1\.8\.0$/);
-  writeFileSync(join(P, 'docs/package.json'), '{ "name": "docs", "dependencies": { "pele": "^1.8.0" } }\n');
+  writeFileSync(join(P, 'docs/package.json'),
+    `{ "name": "docs", "scripts": { "images": "${KIT_IMAGES.script}" }, "dependencies": { "pele": "^1.8.0" } }\n`);
   assert.match(kit(P), /Nothing to add/);
   assert.equal(npm.calls().length, 4, 'pele already there: npm is not run again');
+});
+
+// --- Page actions, "On this page", theme button, pictures --------------------------------
+test('addComponents + useKitImages: the last kit template becomes exactly the new one, once', () => {
+  assert.notEqual(LAST_CONFIG, TEMPLATE_CONFIG);
+  const c = addComponents(LAST_CONFIG);
+  assert.deepEqual(c.added, ['PageTitle', 'TableOfContents', 'ThemeSelect']);
+  const i = useKitImages(c.text);
+  assert.equal(i.added, true);
+  assert.equal(i.text, TEMPLATE_CONFIG);
+  assert.equal(useKitImages(addComponents(i.text).text).text, i.text, 'a second run changes nothing');
+});
+
+test('useKitImages: after `import starlight` without diagrams; kept when it cannot be placed', () => {
+  const none = PREVIOUS_UPGRADED.replace("import mermaid from 'astro-mermaid';\n", '').replace(/^ {4}mermaid\(.*\n/m, '');
+  const r = useKitImages(none);
+  assert.ok(r.text.includes("import starlight from '@astrojs/starlight';\nimport images from './src/image-tools/images.mjs';\n"));
+  assert.match(r.text, /\n {4}images\(\), [^\n]*\n {4}starlight\(\{\n/);
+  assert.equal(r.text.split('\n').length, none.split('\n').length + 2, 'two lines added, nothing else');
+  assert.ok(usesKitImages(r.text));
+  const odd = 'export default { integrations: [] };\n';
+  const k = useKitImages(odd);
+  assert.deepEqual({ text: k.text, added: k.added }, { text: odd, added: false });
+  assert.match(k.kept, /starlight/);
+});
+
+test('addImagesScript: added once with the file\'s indentation; a project\'s own script kept', () => {
+  const r = addImagesScript('{\n    "name": "docs",\n    "scripts": {\n        "build": "astro build"\n    }\n}\n');
+  assert.equal(r.added, true);
+  assert.deepEqual(JSON.parse(r.text).scripts, { build: 'astro build', images: KIT_IMAGES.script });
+  assert.match(r.text, /^ {8}"images": /m, 'same indentation');
+  assert.deepEqual(addImagesScript(r.text), { text: r.text, added: false, kept: '' }, 'once');
+  const own = '{ "scripts": { "images": "node my.mjs" } }\n';
+  const k = addImagesScript(own);
+  assert.equal(k.text, own);
+  assert.match(k.kept, /its own "images" script/);
+  assert.match(addImagesScript('{ nope').kept, /could not be read/);
+});
+
+test('upgradeDocs: page tools and picture files added, package.json script, own files kept', (t) => {
+  const D = tempDir(t);
+  oldDocs(D);
+  mkdirSync(join(D, 'src/pages'), { recursive: true });
+  writeFileSync(join(D, 'src/pages/[...slug].md.ts'), '// my own Markdown pages\n');
+  const r = upgradeDocs(D, TEMPLATE);
+  assert.equal(r.problem, '');
+  assert.equal(readFileSync(join(D, 'src/pages/[...slug].md.ts'), 'utf8'), '// my own Markdown pages\n');
+  assert.ok(r.kept.some((l) => l.includes('src/pages/[...slug].md.ts')));
+  for (const rel of ['src/components/PageActions.astro', 'src/components/ThemeSelect.astro', 'src/components/TableOfContents.astro',
+    'src/scripts/print-pictures.mjs', ...KIT_IMAGES.files]) {
+    assert.equal(readFileSync(join(D, rel), 'utf8'), readFileSync(join(TEMPLATE, rel), 'utf8'), rel);
+  }
+  assert.equal(JSON.parse(readFileSync(join(D, 'package.json'), 'utf8')).scripts.images, KIT_IMAGES.script);
+  assert.ok(r.changed.includes('package.json: added the "images" script (npm run images)'));
+  assert.ok(r.changed.includes('astro.config.mjs: pictures in a few widths, checked on each build (images())'));
+});
+
+test('template: page actions, theme button and "On this page" style', () => {
+  const read = (rel) => readFileSync(join(TEMPLATE, 'src', rel), 'utf8');
+  const actions = read('components/PageActions.astro');
+  for (const needed of ['data-page-actions', 'data-pa-copy', 'data-pa-print', 'role="menu"', 'aria-haspopup="menu"',
+    'Astro.site ?', 'https://claude.ai/new?q=', 'https://chatgpt.com/?q=', 'window.isSecureContext', "execCommand('copy')",
+    'role="status"', 'import.meta.env.BASE_URL', '@media print']) {
+    assert.ok(actions.includes(needed), needed);
+  }
+  assert.ok(!/perplexity/i.test(actions), 'no Perplexity item');
+  assert.ok(read('components/PageTitle.astro').includes("import PageActions from './PageActions.astro'"));
+  const md = read('pages/[...slug].md.ts');
+  assert.ok(md.includes("getCollection('docs')") && md.includes("from '../scripts/page-markdown.mjs'"));
+  const theme = read('components/ThemeSelect.astro');
+  for (const needed of ["'starlight-theme'", 'prefers-color-scheme', 'name="moon"', 'name="sun"']) assert.ok(theme.includes(needed), needed);
+  const toc = read('components/TableOfContents.astro');
+  for (const needed of ['starlight-toc', "aria-current='true'", '--sl-color-text-accent', ':hover']) assert.ok(toc.includes(needed), needed);
+  const serve = readFileSync(join(KIT_DIR, 'lib/docs-serve.mjs'), 'utf8');
+  assert.ok(serve.includes("'.md': 'text/markdown; charset=utf-8'"), '.md served as Markdown');
+});
+
+test('pageMarkdown: title and description on top, no pictures or comments, blank lines squeezed', () => {
+  const body = 'Intro text.\n\n![A photo](./photo.png)\n\n\n\nSee ![icon](../i.svg) here.\n<!-- hidden -->\n{/* mdx note */}\n## Part\n\nEnd.\n';
+  assert.equal(pageMarkdown({ title: 'Setup', description: 'How to start', body }),
+    '# Setup\n\n> How to start\n\nIntro text.\n\nSee  here.\n\n## Part\n\nEnd.\n');
+  assert.equal(pageMarkdown({ title: 'Empty' }), '# Empty\n\n\n');
+});
+
+test('picture rules: references found and renamed only when they point to the picture', (t) => {
+  const D = tempDir(t);
+  const pic = join(D, 'src/assets/img/photo.png');
+  const page = join(D, 'src/content/docs/guide.md');
+  mkdirSync(dirname(pic), { recursive: true });
+  mkdirSync(dirname(page), { recursive: true });
+  const text = [
+    '![a](../../assets/img/photo.png)', // relative: yes
+    '![b](../../assets/other/photo.png)', // same name, other folder: no
+    '<img src="/src/assets/img/photo.png" alt="c">', // from the site folder: yes
+    '![d](./myphoto.png)', // other name ending the same: no
+    'https://example.invalid/assets/img/photo.png', // web address: no
+    '![e](../../assets/img/photo.png "title")', // with a title: yes
+  ].join('\n');
+  assert.deepEqual(findRefs(text, page, pic, D), ['../../assets/img/photo.png', '/src/assets/img/photo.png', '../../assets/img/photo.png']);
+  const renamed = renameRefs(text, page, pic, join(D, 'src/assets/img/photo.webp'), D);
+  assert.equal(renamed, text.replaceAll('img/photo.png', 'img/photo.webp')
+    .replace('https://example.invalid/assets/img/photo.webp', 'https://example.invalid/assets/img/photo.png'), 'web address kept');
+  const config = join(D, 'astro.config.mjs');
+  assert.deepEqual(findRefs("logo: { src: './src/assets/img/photo.png' },", config, pic, D), ['./src/assets/img/photo.png']);
+
+  assert.equal(withoutComments('a <!-- ![x](./p.png) --> b {/* ./p.png */} c', 'x.md'), 'a  b  c');
+  assert.equal(withoutComments('x /* ./p.png */ y', 'x.css'), 'x  y');
+  assert.equal(withoutComments('files in src/* and */ here', 'x.md'), 'files in src/* and */ here', 'pages keep /* */');
+
+  writeFileSync(pic, 'x');
+  writeFileSync(join(D, 'src/assets/img/logo.svg'), '<svg/>');
+  writeFileSync(page, text);
+  mkdirSync(join(D, 'node_modules/pkg'), { recursive: true });
+  writeFileSync(join(D, 'node_modules/pkg/skip.png'), 'x');
+  writeFileSync(config, 'export default {};\n');
+  const found = sitePictures(D);
+  assert.deepEqual({ raster: found.raster, svg: found.svg }, { raster: [pic], svg: [join(D, 'src/assets/img/logo.svg')] });
+  assert.deepEqual(userFiles(D).map((u) => u.path).sort(), [config, page].sort());
 });

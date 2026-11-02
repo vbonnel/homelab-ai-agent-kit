@@ -1,0 +1,52 @@
+---
+/**
+ * agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
+ * delete this line to keep your own version instead.
+ *
+ * "On this page" list (right column on wide screens): Starlight's own, with a thin grey line
+ * on its left; the section being read (aria-current, set by Starlight while scrolling) is in
+ * bold with an accent bar on the line; hovering a section darkens it and shows a grey bar.
+ * Sub-sections stay indented. The narrow-screen drop-down is not changed. Light and dark.
+ *
+ * Set in astro.config.mjs (`components: { TableOfContents: ... }`).
+ */
+import Default from '@astrojs/starlight/components/TableOfContents.astro';
+---
+
+<Default />
+
+<style is:global>
+	starlight-toc nav > ul {
+		border-inline-start: 1px solid var(--sl-color-gray-5);
+	}
+	starlight-toc a {
+		position: relative;
+		border-radius: 0;
+		color: var(--sl-color-gray-3);
+		text-decoration: none;
+		transition: color 0.15s ease-out;
+	}
+	starlight-toc a::before {
+		content: '';
+		position: absolute;
+		inset-block: 0.15rem;
+		inset-inline-start: -2px; /* over the 1px line */
+		width: 3px;
+		border-radius: 3px;
+		background: transparent;
+		transition: background-color 0.15s ease-out;
+	}
+	starlight-toc a:is(:hover, :focus-visible) {
+		color: var(--sl-color-white);
+	}
+	starlight-toc a:is(:hover, :focus-visible)::before {
+		background: var(--sl-color-gray-4);
+	}
+	starlight-toc a[aria-current='true'] {
+		color: var(--sl-color-white);
+		font-weight: 600;
+	}
+	starlight-toc a[aria-current='true']::before {
+		background: var(--sl-color-text-accent);
+	}
+</style>

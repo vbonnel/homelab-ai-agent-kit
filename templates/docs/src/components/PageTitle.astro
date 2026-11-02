@@ -1,0 +1,40 @@
+---
+/**
+ * agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
+ * delete this line to keep your own version instead.
+ *
+ * Page title: Starlight's own title, with the page actions on its right (copy the page as
+ * Markdown, print it, open it in Claude / ChatGPT: src/components/PageActions.astro). On a
+ * narrow screen the actions go under the title. Starlight shows no title on pages with a hero
+ * (a splash homepage), so they get no actions; the 404 page gets none either.
+ *
+ * Set in astro.config.mjs (`components: { PageTitle: ... }`).
+ */
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import PageActions from './PageActions.astro';
+
+const { entry } = Astro.locals.starlightRoute;
+// The 404 page is not a page of the docs collection: it has no Markdown version
+const withActions = Astro.url.pathname.replace(/\/$/, '').split('/').pop() !== '404' && entry.id !== '404';
+---
+
+{
+	withActions ? (
+		<div class="kit-title-row">
+			<Default />
+			<PageActions />
+		</div>
+	) : (
+		<Default />
+	)
+}
+
+<style>
+	.kit-title-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem 1rem;
+	}
+</style>
