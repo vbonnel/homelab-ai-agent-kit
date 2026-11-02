@@ -20,6 +20,16 @@ One command to build software using AI in your SWE projects:
   the build (with the page and line), so it is never merged. Clicking a diagram or a
   picture opens it full screen (zoom and move it; a click closes it), and a **version
   pill** next to the title shows which saved version the website was built from.
+- Each page title has a **Copy page** button: it copies the page as Markdown (for AI
+  tools); its menu also prints the page and, on a site with a public address (`site:` in
+  `astro.config.mjs`), opens it in Claude or ChatGPT. Every page also has a Markdown
+  version next to it (`/getting-started.md`). The "On this page" list shows the section
+  being read with an accent bar, and the light / dark choice is one icon button.
+- **Pictures** are built in a few widths (each screen downloads the size it needs). An
+  original picture in `docs/src/` over 2000 px or 500 KB stops the docs build;
+  `npm run images` (in `docs/`) resizes and compresses them, and updates the pages when a
+  picture becomes a `.webp`. The build also warns about unused or duplicate pictures and
+  pictures put in `public/`.
 
 ---
 
@@ -140,15 +150,16 @@ What `kit update` does safely in existing containers:
 - **Preserves your credentials**: never overwrites `~/.config/agent-kit/secrets.env` or project `.env` files.
 
 Projects are never changed by `kit update`. To give a docs website made with an older
-kit the newest docs features (diagrams drawn by pele, diagram and picture zoom, version pill), run this
-in the project:
+kit the newest docs features (diagrams drawn by pele, diagram and picture zoom, version pill,
+copy-page menu, "On this page" style, light / dark button, picture checks), run this in the project:
 
 ```
 /feature add the kit's docs features (kit docs upgrade)
 ```
 
 `kit docs upgrade` adds the files to `docs/src/` and a few lines to `docs/astro.config.mjs`
-(the kit's astro-mermaid lines become the pele ones), and installs `pele` in place of
+(the kit's astro-mermaid lines become the pele ones) and the `images` script to
+`docs/package.json`, and installs `pele` in place of
 `astro-mermaid` and `mermaid`. It never touches your pages, keeps any of those files you
 changed yourself (they lose the `agent-kit: managed file` line), and can be run again after
 later kit updates to get the newest version of the files. A website whose astro-mermaid
@@ -173,7 +184,7 @@ or maths in labels show as plain text.
 | `consult usage` | shows token and estimated cost usage for specialist calls |
 | `kit docs url` | shows the docs website address |
 | `kit docs update ["msg"]` | rebuilds docs website after manual edits and saves |
-| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, version pill) to an existing docs website |
+| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, version pill, copy-page menu, picture checks...) to an existing docs website |
 | `kit update` | updates the kit from GitHub (preserves config and secrets) |
 
 ---
@@ -191,7 +202,7 @@ claude/skills/feature/      the /feature command
 claude/skills/consult/      the /consult command for specialist delegation
 claude/skills/init-project/ the /init-project command + project templates
 codex/AGENTS.md             global rules for Codex (linked into ~/.codex/AGENTS.md)
-templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, version pill)
+templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, version pill, page actions, picture checks)
 lib/                        helpers (consult.mjs, docs web server, docs upgrade, settings merge)
 ```
 

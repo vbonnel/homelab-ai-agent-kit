@@ -97,8 +97,10 @@ If the project has a docs website (`docs/`, or `DOCS_DIR` in `.agentkit`):
    the changes made in this feature.
    Diagrams: ```mermaid blocks; mark boxes with `:::service`, `:::data`, `:::external`... (list
    in `docs/src/diagrams/theme.css`).
+   Pictures: put them in `docs/src/` (e.g. `docs/src/assets/`), never in `docs/public/`.
 2. `kit docs build` to verify there are no compilation or broken link issues. A diagram with an
-   error stops the build and names the page and line: fix the diagram.
+   error stops the build and names the page and line: fix the diagram. A picture that is too big
+   (over 2000 px or 500 KB) stops it too: run `npm run images` in `docs/` and build again.
 3. Undo any accidental changes made outside the docs folder (`git checkout -- <file>`).
 4. `kit save "docs: <name>"`.
 

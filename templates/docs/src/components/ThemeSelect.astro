@@ -1,0 +1,89 @@
+---
+/**
+ * agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
+ * delete this line to keep your own version instead.
+ *
+ * Light / dark switch: one icon button instead of Starlight's Dark / Light / Auto drop-down.
+ * A moon in light mode (click: dark), a sun in dark mode (click: light). The choice is stored
+ * like Starlight does (localStorage "starlight-theme"), so Starlight's early theme script
+ * applies it before the page shows (no flash). With no choice stored, the site follows the
+ * system theme, and its changes. Label in English, or French on French pages.
+ *
+ * Set in astro.config.mjs (`components: { ThemeSelect: ... }`); Starlight shows it in the top
+ * bar and in the phone menu.
+ */
+import { Icon } from '@astrojs/starlight/components';
+
+const fr = /^fr\b/i.test(Astro.locals.starlightRoute.lang ?? '');
+const label = fr ? 'Changer de thème (clair / sombre)' : 'Switch theme (light / dark)';
+---
+
+<site-theme-toggle>
+	<button type="button" class="theme-toggle" aria-label={label} title={label}>
+		<Icon name="moon" size="1.25rem" class="when-light" />
+		<Icon name="sun" size="1.25rem" class="when-dark" />
+	</button>
+</site-theme-toggle>
+
+<script>
+	const storageKey = 'starlight-theme';
+	const root = document.documentElement;
+	const stored = () => {
+		try {
+			return localStorage.getItem(storageKey);
+		} catch {
+			return null;
+		}
+	};
+	const system = () => (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+
+	// No stored choice: follow the system theme
+	if (stored() !== 'light' && stored() !== 'dark') root.dataset.theme = system();
+	matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+		if (stored() !== 'light' && stored() !== 'dark') root.dataset.theme = system();
+	});
+
+	class SiteThemeToggle extends HTMLElement {
+		connectedCallback() {
+			this.querySelector('button')?.addEventListener('click', () => {
+				const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+				root.dataset.theme = next;
+				try {
+					localStorage.setItem(storageKey, next);
+				} catch {
+					/* not remembered, still switched */
+				}
+			});
+		}
+	}
+	customElements.define('site-theme-toggle', SiteThemeToggle);
+</script>
+
+<style>
+	.theme-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		border: 0;
+		border-radius: 0.5rem;
+		background: transparent;
+		color: var(--sl-color-gray-2);
+		cursor: pointer;
+	}
+	.theme-toggle:hover {
+		background: var(--sl-color-gray-6);
+		color: var(--sl-color-white);
+	}
+	.theme-toggle:focus-visible {
+		outline: 2px solid var(--sl-color-text-accent);
+		outline-offset: 2px;
+	}
+	/* The icon of the theme a click switches to */
+	:global([data-theme='dark']) .when-light,
+	:global([data-theme='light']) .when-dark {
+		display: none;
+	}
+</style>
