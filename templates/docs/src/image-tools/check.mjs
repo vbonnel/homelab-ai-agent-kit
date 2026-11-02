@@ -6,6 +6,7 @@
 //   500 KB -> `npm run images` fixes it; an SVG over 200 KB.
 // - Warnings (printed only): two identical pictures, a picture used nowhere (only named in a
 //   comment counts as unused), a picture in public/ (Astro does not optimise those).
+import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
@@ -16,7 +17,6 @@ const kb = (n) => `${Math.round(n / 1000)} KB`;
 
 /** checkPictures(docsDir) -> { errors, warnings, count } (lists of sentences). */
 export async function checkPictures(docsDir) {
-  const { default: sharp } = await import('sharp');
   const errors = [], warnings = [];
   const name = (f) => relative(docsDir, f);
   const { raster, svg } = sitePictures(docsDir);
