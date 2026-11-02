@@ -1,6 +1,6 @@
 # Docs websites: copy-page menu, theme button, "On this page" style, picture pipeline
 
-Status: building
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -137,16 +137,26 @@ names or addresses; labels in English, French when the page's language starts wi
 - Every template file in `templates/docs/src/` has the marker; no project names / addresses.
 
 ## Acceptance checks
-- [ ] Throwaway docs site upgraded with the work copy's kit: builds; every page except the
+- [x] Throwaway docs site upgraded with the work copy's kit: builds; every page except the
       splash homepage has the split button; `.md` files built; menu without AI items (no `site:`),
       with them when `site:` is set
 - [ ] Copy works on plain HTTP (LAN preview); print prints the page without the widget
 - [ ] "On this page" rail / bar / bold; theme button toggles and is remembered
-- [ ] Built pictures have `srcset`; a 3 MB photo stops the build with `npm run images`, which
+- [x] Built pictures have `srcset`; a 3 MB photo stops the build with `npm run images`, which
       fixes it
-- [ ] Upgrading a site whose project already has its own PageTitle / PageActions keeps them
-- [ ] `scripts/test.sh` passes
+- [x] Upgrading a site whose project already has its own PageTitle / PageActions keeps them
+- [x] `scripts/test.sh` passes
 
 ## Implementation notes
+- Checked on a throwaway site made by `kit docs init` with this work copy (new site, `site:` +
+  `base:` set and not set) and on copies of two existing kit sites upgraded with
+  `lib/docs-upgrade.mjs`: builds, `.md` files, srcset, picture check stops the build, `npm run
+  images` fixes it and renames references. Copy, print, "On this page" and theme button are left
+  for the owner's browser check.
+- `KIT_COMPONENTS` order = the order in the config: new entries go on top of an existing block,
+  so an upgraded config is exactly the new template.
+- The root page has an empty entry id: its Markdown is `/index.md`.
+- A project's own main component (no marker) is kept; that component's other kit files are
+  still added or updated (as for SiteTitle / version.mjs before).
 - Public repo: no IPs, host names, container or project names in any file or commit.
 - Keep `upgradeDocs` writing nothing when the config has a problem.
