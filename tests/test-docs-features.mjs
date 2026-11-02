@@ -671,3 +671,11 @@ test('picture rules: references found and renamed only when they point to the pi
   assert.deepEqual({ raster: found.raster, svg: found.svg }, { raster: [pic], svg: [join(D, 'src/assets/img/logo.svg')] });
   assert.deepEqual(userFiles(D).map((u) => u.path).sort(), [config, page].sort());
 });
+
+test('picture tools load sharp with a static import (Astro 5 closes its config loader early)', () => {
+  for (const rel of ['src/image-tools/check.mjs', 'src/image-tools/optimize.mjs']) {
+    const text = readFileSync(join(TEMPLATE, rel), 'utf8');
+    assert.match(text, /^import sharp from 'sharp';$/m, rel);
+    assert.doesNotMatch(text, /import\(\s*['"]sharp['"]\s*\)/, rel);
+  }
+});
