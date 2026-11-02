@@ -618,6 +618,11 @@ test('template: page actions, theme button and "On this page" style', () => {
     assert.ok(actions.includes(needed), needed);
   }
   assert.ok(!/perplexity/i.test(actions), 'no Perplexity item');
+  // Claude / ChatGPT on every site: public address in the prompt, or (local site) copy then paste
+  assert.ok(/const ai = \[/.test(actions) && !/const ai = publicMd/.test(actions), 'AI items on every site');
+  for (const needed of ['data-pa-paste', 'pastePrompt', "window.open(link.href, '_blank'", 'await copy()']) {
+    assert.ok(actions.includes(needed), needed);
+  }
   assert.ok(read('components/PageTitle.astro').includes("import PageActions from './PageActions.astro'"));
   const md = read('pages/[...slug].md.ts');
   assert.ok(md.includes("getCollection('docs')") && md.includes("from '../scripts/page-markdown.mjs'"));

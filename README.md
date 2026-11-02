@@ -21,8 +21,10 @@ One command to build software using AI in your SWE projects:
   picture opens it full screen (zoom and move it; a click closes it), and a **version
   pill** next to the title shows which saved version the website was built from.
 - Each page title has a **Copy page** button: it copies the page as Markdown (for AI
-  tools); its menu also prints the page and, on a site with a public address (`site:` in
-  `astro.config.mjs`), opens it in Claude or ChatGPT. Every page also has a Markdown
+  tools); its menu also prints the page and opens it in Claude or ChatGPT: a site with a
+  public address (`site:` in `astro.config.mjs`) gives them the page's address; a site on the
+  local network (which they can't read) copies the page and opens them with a prompt: paste
+  the page with Ctrl+V. Every page also has a Markdown
   version next to it (`/getting-started.md`). The "On this page" list shows the section
   being read with an accent bar, and the light / dark choice is one icon button.
 - **Pictures** are built in a few widths (each screen downloads the size it needs). An
