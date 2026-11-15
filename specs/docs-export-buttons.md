@@ -1,6 +1,6 @@
 # Docs websites: copy / save a diagram as SVG, and export the whole docs as one Markdown file
 
-Status: planning
+Status: approved
 Size: normal
 Database change: no
 New settings (.env keys): none
