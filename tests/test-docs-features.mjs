@@ -20,6 +20,8 @@ import {
   useKitImages, usesKitDiagrams, usesKitImages,
 } from '../lib/docs-upgrade.mjs';
 import { pageMarkdown } from '../templates/docs/src/scripts/page-markdown.mjs';
+import { INHERITED, PAINT, exportAttributes, svgFileName, toHex } from '../templates/docs/src/scripts/diagram-export.mjs';
+import { exportFileName, exportList, exportMarkdown, today } from '../templates/docs/src/scripts/export-docs.mjs';
 import { findRefs, renameRefs, sitePictures, userFiles, withoutComments } from '../templates/docs/src/image-tools/rules.mjs';
 
 const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -88,9 +90,16 @@ export default defineConfig({
 `;
 const TEMPLATE_CONFIG = readFileSync(join(TEMPLATE, 'astro.config.mjs'), 'utf8');
 const COMMENT_NOW = '      // Kit docs features (kit docs upgrade): the docs version next to the title, a full-screen\n'
+  + '      // viewer (click a diagram or a picture to zoom and move it; copy or save a diagram as SVG),\n'
+  + '      // page actions next to the page title (copy as Markdown, print), an Export button (the whole\n'
+  + '      // docs as one Markdown file), the "On this page" style and a light / dark button\n';
+// The comment of the kit with page actions, before the Export button and the SVG copy
+const COMMENT_PAGE_TOOLS = '      // Kit docs features (kit docs upgrade): the docs version next to the title, a full-screen\n'
   + '      // viewer (click a diagram or a picture to zoom and move it), page actions next to the page\n'
   + '      // title (copy as Markdown, print), the "On this page" style and a light / dark button\n';
-const NEW_ENTRIES = "        PageTitle: './src/components/PageTitle.astro',\n"
+const SOCIAL_ENTRY = "        SocialIcons: './src/components/SocialIcons.astro',\n";
+const NEW_ENTRIES = SOCIAL_ENTRY
+  + "        PageTitle: './src/components/PageTitle.astro',\n"
   + "        TableOfContents: './src/components/TableOfContents.astro',\n"
   + "        ThemeSelect: './src/components/ThemeSelect.astro',\n";
 // PREVIOUS_CONFIG once upgraded by this kit: the comment of today, the three newer components on top
@@ -105,6 +114,8 @@ const LAST_CONFIG = TEMPLATE_CONFIG
   .replace(NEW_ENTRIES, '')
   .replace(/^import images from .*\n/m, '')
   .replace(/^ {4}images\(\),.*\n/m, '');
+// The template of the kit with page actions and pictures, before the Export button and the SVG copy
+const PAGE_TOOLS_CONFIG = TEMPLATE_CONFIG.replace(COMMENT_NOW, COMMENT_PAGE_TOOLS).replace(SOCIAL_ENTRY, '');
 
 const tempDir = (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'kit-docs-'));
@@ -373,7 +384,7 @@ test('linesBefore: the lines of the file before the text Markdown got', () => {
 test('addComponents: the old template config gets every component, once', () => {
   const r = addComponents(OLD_CONFIG);
   assert.equal(r.problem, '');
-  assert.deepEqual(r.added, ['PageTitle', 'TableOfContents', 'ThemeSelect', 'SiteTitle', 'MarkdownContent']);
+  assert.deepEqual(r.added, ['SocialIcons', 'PageTitle', 'TableOfContents', 'ThemeSelect', 'SiteTitle', 'MarkdownContent']);
   assert.equal(r.text, PREVIOUS_UPGRADED);
   const again = addComponents(r.text);
   assert.equal(again.text, r.text, 'a second run changes nothing');
@@ -391,7 +402,7 @@ test('addComponents: an existing components block gets the missing entries, its 
   const otherTitle = own.replace("Footer: './src/components/Footer.astro'", "SiteTitle: './src/components/MyTitle.astro'");
   const k = addComponents(otherTitle);
   assert.deepEqual(k.kept, ['SiteTitle']);
-  assert.deepEqual(k.added, ['PageTitle', 'TableOfContents', 'ThemeSelect', 'MarkdownContent']);
+  assert.deepEqual(k.added, ['SocialIcons', 'PageTitle', 'TableOfContents', 'ThemeSelect', 'MarkdownContent']);
 
   // A project with its own page title (same path, its own file) or another file: both kept
   const ownPageTitle = own.replace("Footer: './src/components/Footer.astro'", "PageTitle: './src/components/MyPageTitle.astro'");
@@ -413,7 +424,7 @@ test('addComponents: a config it cannot read is left unchanged, with a problem',
 test('addComponents: the older kit comment (Enlarge button) is brought up to date, once', () => {
   assert.notEqual(PREVIOUS_UPGRADED, PREVIOUS_CONFIG);
   const r = addComponents(PREVIOUS_CONFIG);
-  assert.deepEqual({ added: r.added, problem: r.problem }, { added: ['PageTitle', 'TableOfContents', 'ThemeSelect'], problem: '' });
+  assert.deepEqual({ added: r.added, problem: r.problem }, { added: ['SocialIcons', 'PageTitle', 'TableOfContents', 'ThemeSelect'], problem: '' });
   assert.equal(r.text, PREVIOUS_UPGRADED);
   assert.equal(addComponents(r.text).text, r.text, 'a second run changes nothing');
 });
@@ -558,7 +569,7 @@ test('kit docs upgrade: in the real project and in a work copy (only the work co
 test('addComponents + useKitImages: the last kit template becomes exactly the new one, once', () => {
   assert.notEqual(LAST_CONFIG, TEMPLATE_CONFIG);
   const c = addComponents(LAST_CONFIG);
-  assert.deepEqual(c.added, ['PageTitle', 'TableOfContents', 'ThemeSelect']);
+  assert.deepEqual(c.added, ['SocialIcons', 'PageTitle', 'TableOfContents', 'ThemeSelect']);
   const i = useKitImages(c.text);
   assert.equal(i.added, true);
   assert.equal(i.text, TEMPLATE_CONFIG);
@@ -683,4 +694,149 @@ test('picture tools load sharp with a static import (Astro 5 closes its config l
     assert.match(text, /^import sharp from 'sharp';$/m, rel);
     assert.doesNotMatch(text, /import\(\s*['"]sharp['"]\s*\)/, rel);
   }
+});
+
+// --- Copy SVG / Save SVG, Export button --------------------------------------------------
+// Computed values as the browser gives them (getComputedStyle): the defaults, then the given ones
+const BROWSER_DEFAULTS = { ...INHERITED, fill: 'rgb(0, 0, 0)', 'stroke-width': '1px', 'stroke-dashoffset': '0px', opacity: '1', rx: 'auto', ry: 'auto' };
+const computed = (values) => Object.fromEntries(PAINT.map((name) => [name, values[name] ?? BROWSER_DEFAULTS[name] ?? '']));
+
+test('toHex: rgb / rgba as #rrggbb with the alpha apart; other values kept', () => {
+  assert.deepEqual(toHex('rgb(28, 43, 66)'), { value: '#1c2b42', alpha: 1 });
+  assert.deepEqual(toHex('rgba(255, 255, 255, 0.5)'), { value: '#ffffff', alpha: 0.5 });
+  assert.deepEqual(toHex('rgb(0 0 0 / 25%)'), { value: '#000000', alpha: 0.25 });
+  assert.deepEqual(toHex('none'), { value: 'none', alpha: 1 });
+  assert.deepEqual(toHex('url("#kit-diagram-1-grad")'), { value: 'url("#kit-diagram-1-grad")', alpha: 1 });
+});
+
+test('exportAttributes: real colours, inherited ones written once, radii on rectangles only', () => {
+  const root = computed({ fill: 'rgb(206, 207, 210)', 'font-family': 'Helvetica, Arial, sans-serif', 'font-size': '14px' });
+  // The <svg>: compared with the SVG defaults
+  assert.deepEqual(exportAttributes('svg', root, null),
+    [['fill', '#cecfd2'], ['font-family', 'Helvetica, Arial, sans-serif'], ['font-size', '14']]);
+  // A group of lines: no fill, a stroke; its parent's font is not written again
+  const edges = computed({ ...root, fill: 'none', stroke: 'rgb(150, 153, 158)', 'stroke-linecap': 'round' });
+  assert.deepEqual(exportAttributes('g', edges, root), [['fill', 'none'], ['stroke', '#96999e'], ['stroke-linecap', 'round']]);
+  // A dashed path inside it: only the dashes
+  const dashed = { ...edges, 'stroke-dasharray': '3px, 4px' };
+  assert.deepEqual(exportAttributes('path', dashed, edges), [['stroke-dasharray', '3 4']]);
+  // A box: fill, half see-through colour, corner radius without px
+  const box = { ...root, fill: 'rgba(28, 43, 66, 0.5)', stroke: 'rgb(70, 136, 236)', rx: '6px' };
+  assert.deepEqual(exportAttributes('rect', box, root),
+    [['fill', '#1c2b42'], ['fill-opacity', '0.5'], ['stroke', '#4688ec'], ['rx', '6']]);
+  // rx is a corner radius only on rect / ellipse; opacity 1 is never written
+  assert.deepEqual(exportAttributes('path', box, box), []);
+  assert.deepEqual(exportAttributes('g', { ...root, opacity: '0.4' }, root), [['opacity', '0.4']]);
+  // A label the same colour as its parent: nothing; bold text in another colour: both
+  assert.deepEqual(exportAttributes('text', root, root), []);
+  assert.deepEqual(exportAttributes('text', { ...root, fill: 'rgb(31, 31, 33)', 'font-weight': '700', 'text-anchor': 'middle' }, root),
+    [['fill', '#1f1f21'], ['font-weight', '700'], ['text-anchor', 'middle']]);
+  // A child going back to a default its parent changed: written, or it would take the parent's
+  assert.deepEqual(exportAttributes('path', { ...edges, stroke: 'none' }, edges), [['stroke', 'none']]);
+});
+
+test('svgFileName: the page title and the diagram number', () => {
+  assert.equal(svgFileName('Getting started', 2), 'getting-started-diagram-2.svg');
+  assert.equal(svgFileName('Tech stack & how it works', 1), 'tech-stack-how-it-works-diagram-1.svg');
+  assert.equal(svgFileName('Opérations à faire', 3), 'operations-a-faire-diagram-3.svg');
+  assert.equal(svgFileName('', 1), 'diagram-1.svg');
+});
+
+const SIDEBAR = [
+  { type: 'link', label: 'Context', href: '/', isCurrent: true },
+  { type: 'group', label: 'Guides', entries: [
+    { type: 'link', label: 'Install', href: '/guides/install/' },
+    { type: 'group', label: 'More', entries: [{ type: 'link', label: 'Backups', href: '/guides/backups/#daily' }] },
+  ] },
+  { type: 'link', label: 'GitHub', href: 'https://github.com/example/project' },
+  { type: 'link', label: 'Install again', href: '/guides/install/' },
+  { type: 'link', label: 'Changelog', href: '/changelog/' },
+];
+
+test('exportList: the sidebar pages in order, groups flattened, outside links and repeats left out', () => {
+  assert.deepEqual(exportList(SIDEBAR, '/'), [
+    { label: 'Context', href: '/', md: '/index.md' },
+    { label: 'Guides / Install', href: '/guides/install/', md: '/guides/install.md' },
+    { label: 'Guides / More / Backups', href: '/guides/backups/', md: '/guides/backups.md' },
+    { label: 'Changelog', href: '/changelog/', md: '/changelog.md' },
+  ]);
+  // A site with a base path (Astro's BASE_URL with or without its slash)
+  const based = SIDEBAR.map((e) => (e.href?.startsWith('/') ? { ...e, href: `/docs${e.href}` } : e));
+  based[1] = { ...based[1], entries: [{ type: 'link', label: 'Install', href: '/docs/guides/install/' }] };
+  for (const base of ['/docs', '/docs/']) {
+    assert.deepEqual(exportList(based, base).map((p) => p.md), ['/docs/index.md', '/docs/guides/install.md', '/docs/changelog.md']);
+  }
+  // Without trailing slashes, .html pages (build.format 'file'), other kinds of outside links
+  assert.deepEqual(exportList([{ type: 'link', label: 'A', href: '/a' }, { type: 'link', label: 'B', href: '/b.html' },
+    { type: 'link', label: 'Home', href: '/index.html' }, { type: 'link', label: 'Mail', href: 'mailto:x@example.invalid' },
+    { type: 'link', label: 'Other', href: '//example.invalid/x/' }], '/').map((p) => p.md),
+  ['/a.md', '/b.md', '/index.md']);
+  assert.deepEqual(exportList(undefined), []);
+});
+
+test('exportMarkdown: a title, a note, the list of pages, then every page between --- lines', () => {
+  const pagesIn = [
+    { label: 'Context', href: '/', text: '# Context\n\nWhat it is.\n' },
+    { label: 'Guides / Install', href: '/guides/install/', text: '# Install\n\n> How to\n\nSteps.\n\n' },
+  ];
+  const md = exportMarkdown({ title: 'My project', address: 'http://docs.example.invalid:4321', date: '2026-11-14', pages: pagesIn });
+  assert.equal(md, '# My project: documentation\n\n'
+    + '> The whole documentation website in one file: 2 pages, from http://docs.example.invalid:4321/, exported on 2026-11-14.\n'
+    + '> Each page starts with its own "# " title; pages are separated by a line with "---".\n\n'
+    + '## Pages\n\n'
+    + '1. Context: http://docs.example.invalid:4321/\n'
+    + '2. Guides / Install: http://docs.example.invalid:4321/guides/install/\n\n'
+    + '---\n\n# Context\n\nWhat it is.\n\n---\n\n# Install\n\n> How to\n\nSteps.\n');
+  const fr = exportMarkdown({ title: 'Projet', date: '2026-11-14', lang: 'fr-FR', pages: pagesIn.slice(0, 1) });
+  assert.ok(fr.startsWith('# Projet : documentation\n\n> Tout le site de documentation en un seul fichier : 1 page, exporté le 2026-11-14.'), fr);
+  assert.ok(fr.includes('\n1. Context\n'), 'no address: the label only');
+});
+
+test('exportFileName and today', () => {
+  assert.equal(exportFileName('My project'), 'my-project-docs.md');
+  assert.equal(exportFileName('Équipe Café!'), 'equipe-cafe-docs.md');
+  assert.equal(exportFileName(''), 'docs.md');
+  assert.equal(today(new Date(2026, 0, 5)), '2026-01-05');
+});
+
+test('template: Copy SVG / Save SVG in the viewer, for diagrams only', () => {
+  const viewer = readFileSync(join(TEMPLATE, 'src/scripts/diagram-zoom.mjs'), 'utf8');
+  for (const needed of ["from './diagram-export.mjs'", "'Copy SVG'", "'Save SVG'", 'copyButton.hidden = saveButton.hidden = !current',
+    'selfContainedSvg(svg)', 'window.isSecureContext', 'dialog.append(area)', "execCommand('copy')", 'link.download = svgFileName(',
+    "setAttribute('role', 'status')"]) {
+    assert.ok(viewer.includes(needed), needed);
+  }
+  // The copy is made from the diagram on the page (the browser knows its colours there)
+  assert.ok(viewer.includes('const svg = current && drawn(current)'));
+  const exporter = readFileSync(join(TEMPLATE, 'src/scripts/diagram-export.mjs'), 'utf8');
+  for (const needed of ['getComputedStyle', "removeAttribute('style')", "querySelectorAll('style')", 'XMLSerializer', '--pele-bg']) {
+    assert.ok(exporter.includes(needed), needed);
+  }
+  const content = readFileSync(join(TEMPLATE, 'src/components/MarkdownContent.astro'), 'utf8');
+  assert.ok(content.includes('.diagram-zoom-copy') && content.includes('flex-wrap: wrap'), 'copy button and phone styles');
+  assert.ok(KIT_COMPONENTS.MarkdownContent.files.includes('src/scripts/diagram-export.mjs'));
+});
+
+test('template: the Export button in the top bar, next to the social links', () => {
+  const social = readFileSync(join(TEMPLATE, 'src/components/SocialIcons.astro'), 'utf8');
+  for (const needed of ["import Default from '@astrojs/starlight/components/SocialIcons.astro'", '<Default />',
+    'exportList(sidebar, import.meta.env.BASE_URL)', 'Astro.locals.starlightRoute', 'data-pages={JSON.stringify(pages)}',
+    'exportMarkdown(', 'link.download = exportFileName(', 'role="status"', "label: 'Export'", "label: 'Exporter'"]) {
+    assert.ok(social.includes(needed), needed);
+  }
+  assert.deepEqual(KIT_COMPONENTS.SocialIcons.files, ['src/components/SocialIcons.astro', 'src/scripts/export-docs.mjs']);
+  assert.ok(TEMPLATE_CONFIG.includes(SOCIAL_ENTRY), 'set in the template config');
+});
+
+test('addComponents: the page-tools template gets the Export button and today\'s comment, once', () => {
+  assert.notEqual(PAGE_TOOLS_CONFIG, TEMPLATE_CONFIG);
+  const r = addComponents(PAGE_TOOLS_CONFIG);
+  assert.deepEqual({ added: r.added, kept: r.kept, problem: r.problem }, { added: ['SocialIcons'], kept: [], problem: '' });
+  assert.equal(r.text, TEMPLATE_CONFIG);
+  assert.equal(addComponents(r.text).text, r.text, 'a second run changes nothing');
+  // A project with its own SocialIcons: kept; the comment is still brought up to date
+  const own = PAGE_TOOLS_CONFIG.replace('      components: {\n', "      components: {\n        SocialIcons: './src/components/MySocial.astro',\n");
+  const k = addComponents(own);
+  assert.deepEqual({ added: k.added, kept: k.kept }, { added: [], kept: ['SocialIcons'] });
+  assert.ok(k.text.includes(COMMENT_NOW));
 });

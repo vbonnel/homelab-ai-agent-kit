@@ -16,9 +16,11 @@ export default defineConfig({
     starlight({
       title: '__PROJECT_TITLE__',
       // Kit docs features (kit docs upgrade): the docs version next to the title, a full-screen
-      // viewer (click a diagram or a picture to zoom and move it), page actions next to the page
-      // title (copy as Markdown, print), the "On this page" style and a light / dark button
+      // viewer (click a diagram or a picture to zoom and move it; copy or save a diagram as SVG),
+      // page actions next to the page title (copy as Markdown, print), an Export button (the whole
+      // docs as one Markdown file), the "On this page" style and a light / dark button
       components: {
+        SocialIcons: './src/components/SocialIcons.astro',
         PageTitle: './src/components/PageTitle.astro',
         TableOfContents: './src/components/TableOfContents.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',
