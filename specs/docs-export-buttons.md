@@ -1,6 +1,6 @@
 # Docs websites: copy / save a diagram as SVG, and export the whole docs as one Markdown file
 
-Status: tests passed
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -129,16 +129,20 @@ Two owner requests for every kit docs website:
   template) still become exactly the new template, once; the previous comment is updated once.
 
 ## Acceptance checks
-- [ ] Throwaway docs site (made by this work copy's `kit docs init` in a temp folder) builds; the
-      Export button is in the built pages with the sidebar's page list; the viewer script has the
+- [x] Throwaway docs site (this work copy's template + `lib/docs-upgrade.mjs`, the same steps as
+      `kit docs init`, in a temp folder; Astro 7.4.12, Starlight 0.43.1, pele 1.13.0) builds; the
+      Export button is in the top bar (and the phone menu) with the sidebar's page list (group
+      flattened, outside link left out); its script is on the page once; the viewer script has the
       two buttons
-- [ ] The SVG made from a real pele diagram has no `var(` left and real colours (checked by running
-      the export on the built site's diagram in Node with the computed colours of the theme file,
-      as far as possible without a browser)
+- [x] Export from the built site's real `.md` files (same steps as the button, run in Node): all 6
+      pages found, in sidebar order, `demo-cafe-docs.md`
+- [~] The SVG of a real pele diagram: every `var(` is in a `style`, `fill` or `stroke` attribute
+      (no `<style>`, no `foreignObject`), all three removed and replaced by the browser's values;
+      the value rules are tested. Not run in a browser (none here): owner's check below
 - [ ] Owner, in a browser: Copy SVG then paste into Figma / Penpot gives the diagram with its
       colours; Save SVG downloads a file that opens / imports; Export downloads one `.md` with all
       pages
-- [ ] `scripts/test.sh` passes
+- [x] `scripts/test.sh` passes (51 tests)
 
 ## Implementation notes
 - Style: short plain comments like the rest of the kit; LF line endings; generic files (no project
