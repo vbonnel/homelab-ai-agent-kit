@@ -1,6 +1,6 @@
 # Docs websites: a clearer, more polished Export button
 
-Status: approved
+Status: tests passed
 Size: small
 Database change: no
 New settings (.env keys): none

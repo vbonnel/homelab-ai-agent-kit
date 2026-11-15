@@ -29,7 +29,7 @@ One command to build software using AI in your SWE projects:
   the page with Ctrl+V. Every page also has a Markdown
   version next to it (`/getting-started.md`). The "On this page" list shows the section
   being read with an accent bar, and the light / dark choice is one icon button.
-- An **Export** button on the right of the top bar downloads the whole documentation as
+- An **Export docs** button on the right of the top bar downloads the whole documentation as
   one Markdown file (every page of the sidebar, in its order), to upload into an AI tool's
   project as context.
 - **Pictures** are built in a few widths (each screen downloads the size it needs). An
