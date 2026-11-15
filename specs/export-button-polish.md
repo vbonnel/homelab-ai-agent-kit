@@ -1,6 +1,6 @@
 # Docs websites: a clearer, more polished Export button
 
-Status: tests passed
+Status: ready to merge
 Size: small
 Database change: no
 New settings (.env keys): none
@@ -32,7 +32,7 @@ tag, the page count in the hover text, the four states (idle / busy / done / fai
 reduced-motion rule.
 
 ## Acceptance checks
-- [ ] Test site rebuilt and served again at the same address: the new button in the top bar and
+- [x] Test site rebuilt and served again at the same address: the new button in the top bar and
       the phone menu
-- [ ] `scripts/test.sh` passes
+- [x] `scripts/test.sh` passes (51 tests)
 - [ ] Owner, in a browser: the button looks right in light and dark, and the states show
