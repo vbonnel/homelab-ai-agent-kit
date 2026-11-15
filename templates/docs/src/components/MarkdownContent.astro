@@ -5,6 +5,8 @@
  *
  * Page content: Starlight's own MarkdownContent, plus the full-screen viewer for the
  * Mermaid diagrams and the pictures: click one (Tab + Enter works too); no button on the page. Zoom and move in the viewer.
+ * A diagram in the viewer can be copied as SVG (paste it into Figma or Penpot) or saved as an
+ * .svg file, with its colours written into it (src/scripts/diagram-export.mjs).
  *
  * Set in astro.config.mjs (`components: { MarkdownContent: ... }`). The code is in
  * src/scripts/diagram-zoom.mjs (made in the browser, so the styles below are global).
@@ -108,6 +110,27 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 		border-color: var(--sl-color-accent);
 		color: var(--sl-color-text-accent);
 	}
+	.diagram-zoom-bar button[hidden] {
+		display: none;
+	}
+	/* Copy SVG: its three labels in one cell, only the one of its state shown (same width) */
+	.diagram-zoom-copy {
+		display: inline-grid;
+		align-items: center;
+		justify-items: center;
+		white-space: nowrap;
+	}
+	.diagram-zoom-copy > span {
+		grid-area: 1 / 1;
+	}
+	.diagram-zoom-copy:not([data-state='idle']) > [data-when='idle'],
+	.diagram-zoom-copy:not([data-state='copied']) > [data-when='copied'],
+	.diagram-zoom-copy:not([data-state='failed']) > [data-when='failed'] {
+		visibility: hidden;
+	}
+	.diagram-zoom-bar button:not(.diagram-zoom-copy) {
+		white-space: nowrap;
+	}
 	.diagram-zoom-stage {
 		position: relative;
 		flex: 1;
@@ -136,6 +159,13 @@ import Default from '@astrojs/starlight/components/MarkdownContent.astro';
 	}
 
 	@media (max-width: 40rem) {
+		/* Phones: the buttons go on two lines when they don't fit on one */
+		.diagram-zoom-bar {
+			flex-wrap: wrap;
+		}
+		.diagram-zoom-bar button {
+			padding: 0 0.5rem;
+		}
 		.diagram-zoom-hint {
 			display: none;
 		}

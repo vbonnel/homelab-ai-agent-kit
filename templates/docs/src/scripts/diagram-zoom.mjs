@@ -11,14 +11,19 @@
 // innerHTML), so the diagram keeps its own element and listeners (only its inside is redrawn).
 // Pictures: the <img> of the page content (Astro's .webp). A copy is shown at most at its own
 // size when fitted (no blurry blow-up), and can still be zoomed in.
+// A diagram open in the viewer can be copied as SVG (paste it into Figma or Penpot) or saved as
+// an .svg file: "Copy SVG" / "Save SVG" in the bar (scripts/diagram-export.mjs makes the SVG).
 import { fitView, isDoubleClick, zoomAt, zoomLimits } from './zoom-math.mjs';
+import { selfContainedSvg, svgFileName } from './diagram-export.mjs';
 
 const STEP = 1.25; // one press of + or -, or a key
 const HINT = 'Scroll or pinch to zoom, drag to move, click or Esc to close';
 const CLICK_MOVE = 6;   // pixels a click may move and still be a click (more: a drag)
 const DOUBLE_TIME = 300; // milliseconds: a single click closes after this, unless a second one comes
 
-let dialog, stage, layer, level, fitButton;
+let dialog, stage, layer, level, fitButton, copyButton, saveButton, status;
+let current = null;          // the diagram open in the viewer (null: a picture)
+let copyReset = 0;
 let view = { scale: 1, x: 0, y: 0 };
 let limits = { min: 0.5, max: 4 };
 let size = { w: 0, h: 0 };   // the diagram's or picture's own size
@@ -110,8 +115,22 @@ function makeViewer() {
   level = document.createElement('span');
   level.className = 'diagram-zoom-level';
   level.setAttribute('aria-live', 'polite');
+  // Copy SVG holds its three labels in one place (CSS shows the one of its state): same width
+  copyButton = tool('Copy SVG: paste it into Figma or Penpot', '', copySvg);
+  copyButton.classList.add('diagram-zoom-copy');
+  for (const [state, text] of [['idle', 'Copy SVG'], ['copied', 'Copied!'], ['failed', 'Copy failed']]) {
+    const label = document.createElement('span');
+    label.dataset.when = state;
+    label.textContent = text;
+    copyButton.append(label);
+  }
+  copyButton.dataset.state = 'idle';
+  saveButton = tool('Save SVG: download the diagram as a file', 'Save SVG', saveSvg);
+  status = document.createElement('span');
+  status.className = 'sr-only';
+  status.setAttribute('role', 'status');
   bar.append(
-    hint, level,
+    hint, level, status, copyButton, saveButton,
     tool('Zoom out (-)', '−', () => zoomCentre(1 / STEP)),
     tool('Zoom in (+)', '+', () => zoomCentre(STEP)),
     fitButton = tool('Show the whole diagram (0)', 'Fit', fit),
@@ -188,6 +207,10 @@ function makeViewer() {
     lastClick = null;
     clearTimeout(closeTimer);
     stage.classList.remove('dragging');
+    current = null;
+    clearTimeout(copyReset);
+    copyButton.dataset.state = 'idle';
+    status.textContent = '';
   });
 
   // A new window size keeps the same part of the diagram in the middle
@@ -223,6 +246,7 @@ function openDiagram(diagram) {
   copy.setAttribute('width', String(size.w));
   copy.setAttribute('height', String(size.h));
   copy.style.maxWidth = 'none';
+  current = diagram;
   showViewer('Diagram, full screen', 'Show the whole diagram (0)', Infinity);
 }
 
@@ -241,6 +265,7 @@ function openPicture(img) {
   copy.style.height = `${size.h}px`;
   copy.style.maxWidth = 'none';
   layer.replaceChildren(copy);
+  current = null;
   showViewer('Picture, full screen', 'Show the whole picture (0)', 1);
 }
 
@@ -248,11 +273,68 @@ function openPicture(img) {
 // what opened it (the <dialog> does that by itself)
 function showViewer(label, fitLabel, largest) {
   dialog.setAttribute('aria-label', label);
+  copyButton.hidden = saveButton.hidden = !current; // diagrams only
   fitButton.title = fitLabel;
   fitButton.setAttribute('aria-label', fitLabel);
   most = largest;
   dialog.showModal();
   fit();
+}
+
+// --- Copy SVG / Save SVG (the diagram open in the viewer) ------------------------------
+// The SVG is made from the diagram on the page, where the browser knows its colours
+const diagramSvg = () => {
+  const svg = current && drawn(current);
+  return svg ? selfContainedSvg(svg) : '';
+};
+
+// The clipboard on HTTPS; on plain HTTP (a site on the local network) a hidden textarea, put
+// inside the viewer (while it is open, the rest of the page can't be used, not even to copy)
+async function copySvg() {
+  let ok = false;
+  try {
+    const text = diagramSvg();
+    if (!text) throw new Error('no diagram');
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } else {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.setAttribute('readonly', '');
+      area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+      dialog.append(area);
+      area.select();
+      ok = document.execCommand('copy');
+      area.remove();
+      copyButton.focus();
+    }
+  } catch {
+    ok = false;
+  }
+  copyButton.dataset.state = ok ? 'copied' : 'failed';
+  status.textContent = ok ? 'Copied! Paste it into Figma or Penpot' : 'Copy failed';
+  clearTimeout(copyReset);
+  copyReset = setTimeout(() => {
+    copyButton.dataset.state = 'idle';
+    status.textContent = '';
+  }, 2000);
+}
+
+// A file named after the page and the diagram's place on it: getting-started-diagram-2.svg
+function saveSvg() {
+  const text = diagramSvg();
+  if (!text) return;
+  const n = [...document.querySelectorAll(DIAGRAMS)].indexOf(current) + 1;
+  const title = (document.querySelector('h1#_top') ?? document.querySelector('h1'))?.textContent ?? '';
+  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = svgFileName(title.trim(), n || 1);
+  dialog.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function measureRoom() {

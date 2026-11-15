@@ -408,8 +408,8 @@ cmd_docs_update() {
   say "Docs online: $(cmd_docs_url)"
 }
 
-# Add the kit's docs features (diagram zoom, version pill, diagrams drawn by pele, page actions,
-# "On this page" style, light / dark button, picture checks) to an existing
+# Add the kit's docs features (diagram zoom with Copy / Save SVG, version pill, diagrams drawn by
+# pele, page actions, Export button, "On this page" style, light / dark button, picture checks) to an existing
 # docs website, or bring their files up to date. Pages are never touched. Works in a work copy too
 # (for /feature).
 cmd_docs_upgrade() {
@@ -540,7 +540,7 @@ kit - homelab agent kit helper (normally used by Claude, not typed by you)
   kit consult ...            delegate a read-only task (review, investigate, tests, compare, ask)
   kit docs url               show the docs website address
   kit docs update ["msg"]    after editing docs pages: rebuild the website and save them
-  kit docs upgrade           add the kit's docs features (diagrams by pele, zoom, version pill, page actions, picture checks) to a docs website
+  kit docs upgrade           add the kit's docs features (diagrams by pele, zoom, SVG copy, version pill, page actions, Export, picture checks) to a docs website
 
 Used by Claude / Codex during /feature, /consult and /init-project:
   kit start <name> [--anyway]   create a work copy (branch feature/<name>)
