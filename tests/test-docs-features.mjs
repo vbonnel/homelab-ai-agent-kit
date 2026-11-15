@@ -821,9 +821,17 @@ test('template: the Export button in the top bar, next to the social links', () 
   const social = readFileSync(join(TEMPLATE, 'src/components/SocialIcons.astro'), 'utf8');
   for (const needed of ["import Default from '@astrojs/starlight/components/SocialIcons.astro'", '<Default />',
     'exportList(sidebar, import.meta.env.BASE_URL)', 'Astro.locals.starlightRoute', 'data-pages={JSON.stringify(pages)}',
-    'exportMarkdown(', 'link.download = exportFileName(', 'role="status"', "label: 'Export'", "label: 'Exporter'"]) {
+    'exportMarkdown(', 'link.download = exportFileName(', 'role="status"', "label: 'Export docs'", "label: 'Exporter la doc'",
+    'class="kit-export-tag" aria-hidden="true">.md<', '`Download all ${n} pages of the docs', '`Télécharger les ${n} pages de la doc',
+    'prefers-reduced-motion: reduce']) {
     assert.ok(social.includes(needed), needed);
   }
+  // Four states, each with its label and its icon; the done / failed ones go back after 2 s
+  for (const state of ['idle', 'busy', 'done', 'failed']) {
+    assert.equal(social.match(new RegExp(`data-when="${state}"`, 'g'))?.length, 2, `${state}: a label and an icon`);
+    assert.ok(social.includes(`.kit-export[data-state='${state}'] [data-when='${state}']`), `${state} shown`);
+  }
+  assert.ok(social.includes("if (state === 'done' || state === 'failed') reset = setTimeout(() => show('idle'), 2000)"));
   assert.deepEqual(KIT_COMPONENTS.SocialIcons.files, ['src/components/SocialIcons.astro', 'src/scripts/export-docs.mjs']);
   assert.ok(TEMPLATE_CONFIG.includes(SOCIAL_ENTRY), 'set in the template config');
 });
