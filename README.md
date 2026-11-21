@@ -33,6 +33,15 @@ One command to build software using AI in your SWE projects:
 - An **Export docs** button on the right of the top bar downloads the whole documentation as
   one Markdown file (every page of the sidebar, in its order), to upload into an AI tool's
   project as context.
+- An **Edit** button next to each page title (when turned on for the project with
+  `kit docs edit on`) lets you fix the text of a page in the page itself: click Edit, type, then
+  **Save** (or **Discard**). Only the words you changed are written into the page's Markdown file;
+  the website is rebuilt and the file is saved in git as its own version (undo works like for any
+  change). Text only: no new lines or formatting, and characters like `*` or `#` show as typed;
+  code blocks, diagrams and pictures can't be changed there. It is off by default: when on,
+  **anyone who can open the website can change it** (no password), so turn it on only for a site
+  that only you can reach. Other websites can't save through your browser, and a copy of the
+  site served by anything else never shows the button.
 - **Pictures** are built in a few widths (each screen downloads the size it needs). An
   original picture in `docs/src/` over 2000 px or 500 KB stops the docs build;
   `npm run images` (in `docs/`) resizes and compresses them, and updates the pages when a
@@ -159,8 +168,8 @@ What `kit update` does safely in existing containers:
 
 Projects are never changed by `kit update`. To give a docs website made with an older
 kit the newest docs features (diagrams drawn by pele, diagram and picture zoom, Copy code / Copy / Save SVG,
-version pill, copy-page menu, Export button, "On this page" style, light / dark button, picture
-checks), run this in the project:
+version pill, copy-page menu, Export button, Edit button, "On this page" style, light / dark button,
+picture checks), run this in the project:
 
 ```
 /feature add the kit's docs features (kit docs upgrade)
@@ -193,7 +202,8 @@ or maths in labels show as plain text.
 | `consult usage` | shows token and estimated cost usage for specialist calls |
 | `kit docs url` | shows the docs website address |
 | `kit docs update ["msg"]` | rebuilds docs website after manual edits and saves |
-| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, SVG and code copy, version pill, copy-page menu, Export button, picture checks...) to an existing docs website |
+| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, SVG and code copy, version pill, copy-page menu, Export button, Edit button, picture checks...) to an existing docs website |
+| `kit docs edit on` / `off` / `status` | lets anyone who can open the docs website change its pages' text in the browser (off by default) |
 | `kit update` | updates the kit from GitHub (preserves config and secrets) |
 
 ---
@@ -211,8 +221,20 @@ claude/skills/feature/      the /feature command
 claude/skills/consult/      the /consult command for specialist delegation
 claude/skills/init-project/ the /init-project command + project templates
 codex/AGENTS.md             global rules for Codex (linked into ~/.codex/AGENTS.md)
-templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, SVG and code copy, version pill, page actions, Export button, picture checks)
-lib/                        helpers (consult.mjs, docs web server, docs upgrade, settings merge)
+templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, SVG and code copy, version pill, page actions, Export button, Edit button, picture checks)
+lib/                        helpers (consult.mjs, docs web server and its page saving, docs upgrade, settings merge)
+```
+
+## Settings (per project)
+
+`.agentkit` in the project folder (saved in git with the project):
+
+```ini
+DOCS_DIR=docs                # where the docs website is (default: docs)
+DOCS_PORT=4321               # written by `kit docs service`
+DOCS_EDIT=on                 # Edit button on (kit docs edit on / off); missing = off
+DOCS_EDIT_HOSTS=docs.lan     # optional: names (not IP addresses) the website is opened with,
+                             # when editing should work through them too
 ```
 
 ## Settings (per container)

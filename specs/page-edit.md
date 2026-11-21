@@ -1,6 +1,6 @@
 # Docs websites: change a page's text in the browser (Edit / Save / Discard)
 
-Status: tests passed (next: headless browser check on the playground, docs, final check)
+Status: docs
 Size: normal
 Database change: no
 New settings (.env keys): none. New project setting in `.agentkit`: `DOCS_EDIT=on` (off when
@@ -85,7 +85,8 @@ undone like any other change.
   hidden until `GET /_kit/edit` answers `{ "enabled": true }` and the page has editable text, so
   a mirror or a static copy of the site never shows it.
   - Edit: every `span[data-kit-src]` of the page content and the title become editable
-    (`contenteditable="plaintext-only"`, `true` where not supported), the Edit button hides, a bar
+    (`contenteditable="true"`: "plaintext-only" would show line ends as breaks; formatting is
+    blocked instead), the Edit button hides, a bar
     fixed at the bottom shows "Editing: click a text to change it", **Discard**, **Save**
     (accent). Hover: a thin dotted outline on editable text; focus: accent outline; changed text:
     a light accent background; code blocks, diagrams and pictures are faded while editing.
@@ -128,7 +129,9 @@ undone like any other change.
   and says who can then edit ("anyone who can open <url>"). `kit help`.
 - `lib/docs-upgrade.mjs`: `PageTitle` also brings `src/components/PageEdit.astro`,
   `src/scripts/page-edit.mjs`; new `KIT_PAGE_EDIT` (integration + `src/page-edit/*.mjs`) added
-  to `astro.config.mjs` like `images()`; the components comment mentions editing.
+  to `astro.config.mjs` like `images()` (the components comment is unchanged: the `pageEdit()`
+  line has its own). `kit docs upgrade` also deletes Astro's cache of rendered pages
+  (`node_modules/.astro/data-store.json`), so every page gets its spans on the next build.
 - `README.md`: the feature, `kit docs edit`, the `.agentkit` settings, who can edit.
 
 ## Tests to add or update
@@ -154,13 +157,21 @@ no browser):
 
 ## Acceptance checks
 - [x] `scripts/test.sh` passes (74 tests)
-- [ ] A throwaway docs site (this work copy's template, Astro 7) builds; its pages carry
-      `data-kit-src` spans whose ranges hold their text (checked for every span of every page)
-- [ ] Docs playground site (a permanent test site in the kit's container, editing on): in a
-      headless browser, Edit, type in a paragraph, a bold word, a table cell, inline code, the
-      title, Save: the file has only those changes, the page shows them, git has the version;
-      Discard puts the text back; Enter adds nothing
-- [ ] Another website (other Origin) can't save; with `kit docs edit off` the button is gone
+- [x] A docs site built with this work copy's template (Astro 7.4.13, Starlight 0.43.1, Sätteri):
+      every `data-kit-src` span of every page holds its text in the file (playground: 7 pages, 107
+      texts incl. smart quotes, entities, escapes, quotes, lists, tables, asides, MDX components;
+      0 wrong); code blocks and diagrams get none
+- [x] Docs playground (a permanent test site in the kit's container, editing on), headless
+      Chromium, 19 checks: Edit shows only when the server allows it; Edit / Discard (text back);
+      Enter adds nothing (hint in the bar); paste = plain text on one line; a link click places the
+      cursor; changes counted; Ctrl+S saves: paragraph, bold, list items, table cell, inline code,
+      title and typed `*not bold*` (written `\*not bold\*`) land in the file, nothing else changes,
+      one git version, the page reloads with "Saved (version …)"; no script errors. The paragraph
+      keeps its lines while editing (`contenteditable="true"`: "plaintext-only" shows line ends as
+      breaks); the bar sits beside the sidebar on desktop and full width on a phone, light and dark
+- [x] MDX page saved with typed `{braces}` and `<tags>`: written `\{braces\}` / `\<tags>`,
+      shown as text
+- [x] Another website (other Origin) is refused; with `kit docs edit off` the button is gone
 - [ ] Owner, in a browser: edit and save a page of the playground
 
 ## Implementation notes

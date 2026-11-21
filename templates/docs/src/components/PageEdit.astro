@@ -66,16 +66,10 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 
 	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string };
 
-	// plaintext-only: typing never adds formatting; older browsers get "true" (formatting blocked below)
-	const editableMode = (() => {
-		const probe = document.createElement('span');
-		try {
-			probe.contentEditable = 'plaintext-only';
-			return probe.contentEditable === 'plaintext-only' ? 'plaintext-only' : 'true';
-		} catch {
-			return 'true';
-		}
-	})();
+	// contenteditable="true", not "plaintext-only": browsers show a plaintext-only text's line ends as
+	// breaks (the paragraph would change shape). Formatting, new lines, rich paste and drops are
+	// blocked below, and only the text (textContent) is ever sent.
+	const editableMode = 'true';
 
 	class KitPageEdit extends HTMLElement {
 		connectedCallback() {
@@ -90,6 +84,9 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 			const root = document.documentElement;
 			const heading = document.getElementById('_top');
 			const titleSrc = this.dataset.titleSrc;
+			// The bar lives at the end of the page body: inside the page column, Starlight's sidebar
+			// would be drawn over it (the column is its own layer)
+			document.body.append(bar);
 			// Each editable text and its text when editing started
 			const originals = new Map<HTMLElement, string>();
 			let editing = false;
@@ -345,14 +342,15 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 	/* The bar at the bottom of the window while editing (and the "Saved" message) */
 	.kit-edit-bar {
 		position: fixed;
-		inset-inline: 0;
+		/* centred over the page, beside the sidebar (Starlight's --sl-content-inline-start) */
+		inset-inline: calc(var(--sl-content-inline-start, 0px) + 1rem) 1rem;
 		bottom: 1rem;
-		z-index: 15; /* over the page and its top bar's shadow, under the full-screen viewer */
+		z-index: 15; /* over the page, the sidebars and the top bar; under the full-screen viewer */
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem 0.75rem;
-		width: min(44rem, calc(100% - 2rem));
+		max-width: 44rem;
 		margin-inline: auto;
 		padding: 0.5rem 0.5rem 0.5rem 1rem;
 		border: 1px solid var(--sl-color-gray-5);
@@ -432,8 +430,9 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 	@media (max-width: 40rem) {
 		/* Phones: the bar is the bottom of the screen */
 		.kit-edit-bar {
+			inset-inline: 0;
 			bottom: 0;
-			width: 100%;
+			max-width: none;
 			padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
 			border-width: 1px 0 0;
 			border-radius: 0;
@@ -466,7 +465,8 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 		opacity: 0.45;
 	}
 	@media print {
-		kit-page-edit {
+		kit-page-edit,
+		.kit-edit-bar {
 			display: none !important;
 		}
 	}

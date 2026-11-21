@@ -550,7 +550,7 @@ test('template: the Edit button, its bar and what it sends; marked files; no add
   const title = readFileSync(join(TEMPLATE, 'src/components/PageTitle.astro'), 'utf8');
   assert.ok(title.includes("import PageEdit from './PageEdit.astro'") && /<PageEdit \/>\s*<PageActions \/>/.test(title));
   const edit = readFileSync(join(TEMPLATE, 'src/components/PageEdit.astro'), 'utf8');
-  for (const needed of ["'plaintext-only'", "'insertParagraph'", "'insertLineBreak'", "startsWith('format')", "execCommand('insertText'",
+  for (const needed of ["const editableMode = 'true'", "'insertParagraph'", "'insertLineBreak'", "startsWith('format')", "execCommand('insertText'",
     "'x-kit-edit': '1'", "'content-type': 'application/json'", 'location.pathname', 'location.reload()', "'beforeunload'",
     'span[data-kit-src]', "getElementById('_top')", 'createHash(\'sha256\')', 'titleRange(', 'data-hash={hash}', 'cache: \'no-store\'',
     "answer?.enabled === true", 'sessionStorage', '@media print', 'kit-editing', 'prefers-reduced-motion']) {
