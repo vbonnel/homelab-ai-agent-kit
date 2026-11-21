@@ -1,6 +1,6 @@
 # Docs websites: copy a diagram as its Mermaid code
 
-Status: building
+Status: tests passed
 Size: small
 Database change: no
 New settings (.env keys): none
@@ -58,10 +58,13 @@ The owner wants to copy one diagram as its Mermaid code. Today the full-screen v
   there is none, and Copy SVG / Copy code both go through `copyText`.
 
 ## Acceptance checks
-- [ ] Throwaway docs site (this work copy's template, `kit docs init` steps, temp folder) builds;
-      a page with a diagram has `data-source` on its `.kit-diagram`, and reading that attribute
-      back (HTML parsing rules) gives exactly the page's ```` ```mermaid ```` block
-- [ ] `scripts/test.sh` passes
+- [x] Throwaway docs site (this work copy's template + `lib/docs-upgrade.mjs`, the `kit docs init`
+      steps, temp folder; Astro 7.4.12, Starlight 0.43.1, pele 1.13.0) builds; a test page with two
+      diagrams (quotes, `&`, `<` `>`, a tab-indented line) has `data-source` on both `.kit-diagram`
+      boxes, and an HTML parser reading the attributes back gives exactly the page's two
+      ```` ```mermaid ```` blocks; the built viewer script has the Copy code button (hidden when
+      there is no code)
+- [x] `scripts/test.sh` passes (53 tests)
 - [ ] Owner, in a browser: open a diagram, Copy code, paste: the Mermaid code of that diagram only
 
 ## Implementation notes
