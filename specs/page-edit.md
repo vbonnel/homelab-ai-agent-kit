@@ -1,6 +1,6 @@
 # Docs websites: change a page's text in the browser (Edit / Save / Discard)
 
-Status: docs
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none. New project setting in `.agentkit`: `DOCS_EDIT=on` (off when
