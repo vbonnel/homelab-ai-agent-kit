@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fitView, isDoubleClick, zoomAt, zoomLimits } from '../templates/docs/src/scripts/zoom-math.mjs';
 import { docsVersion } from '../templates/docs/src/version.mjs';
-import { drawCode, drawDiagrams, diagramError, isDiagram, linesBefore } from '../templates/docs/src/diagrams/draw.mjs';
+import { drawCode, drawDiagrams, diagramError, isDiagram, linesBefore, sourceAttribute } from '../templates/docs/src/diagrams/draw.mjs';
 import {
   MARKER, KIT_COMPONENTS, KIT_DIAGRAMS, KIT_IMAGES, addComponents, addImagesScript, upgradeDocs, useKitDiagrams,
   useKitImages, usesKitDiagrams, usesKitImages,
@@ -325,11 +325,37 @@ const block = (value, line, lang = 'mermaid') => ({ type: 'code', lang, value, p
 test('drawCode: the picture in a kit-diagram box, ids numbered on the page', () => {
   const calls = [];
   const html = drawCode(block('flowchart LR\n  A --> B', 5), 2, 'src/content/docs/x.md', fakeDraw(calls));
-  assert.equal(html, '<div class="kit-diagram" data-diagram="flowchart"><svg class="pele"><text>flowchart LR</text></svg></div>');
+  assert.equal(html, '<div class="kit-diagram" data-diagram="flowchart" data-source="flowchart LR&#10;  A --&gt; B">'
+    + '<svg class="pele"><text>flowchart LR</text></svg></div>');
   assert.equal(calls[0].source, 'flowchart LR\n  A --> B');
   assert.deepEqual(calls[0].options, { idPrefix: 'kit-diagram-2-' });
   const odd = drawCode(block('x', 1), 1, 'p.md', () => ({ svg: '<svg/>', type: 'a"><b>' }));
-  assert.equal(odd, '<div class="kit-diagram" data-diagram="ab"><svg/></div>', 'only a plain word in the attribute');
+  assert.equal(odd, '<div class="kit-diagram" data-diagram="ab" data-source="x"><svg/></div>', 'only a plain word in the attribute');
+});
+
+// What a browser gives back for an attribute value (the entities sourceAttribute writes, and
+// the numeric ones in general)
+const attributeValue = (v) => v.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+  .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+test('sourceAttribute: the Mermaid code safe in an HTML attribute, given back exactly', () => {
+  assert.equal(sourceAttribute('A["Tom & Jerry"] --> B<br>C'), 'A[&quot;Tom &amp; Jerry&quot;] --&gt; B&lt;br&gt;C');
+  assert.equal(sourceAttribute('flowchart LR\n\tA --> B\n'), 'flowchart LR&#10;&#9;A --&gt; B&#10;');
+  assert.equal(sourceAttribute('a\r\nb\rc'), 'a&#10;b&#10;c', 'Windows and old Mac line ends become plain ones');
+  assert.equal(sourceAttribute('&amp; stays as typed'), '&amp;amp; stays as typed');
+  assert.equal(sourceAttribute(undefined), '');
+  const code = 'sequenceDiagram\n  participant U as "User"\n  U->>S: GET /x?a=1&b=2\n  Note over U,S: <b>bold</b> & \'quotes\'\n\tS-->>U: 200';
+  const attr = sourceAttribute(code);
+  assert.doesNotMatch(attr, /["<>\n\r\t]/, 'nothing that ends the attribute or that a minifier would touch');
+  assert.equal(attributeValue(attr), code);
+});
+
+test('drawCode: each diagram box keeps its own code, quotes and arrows inside the attribute', () => {
+  const code = 'flowchart TD\n  A["Start (1)"] -->|"yes"| B{OK?}\n  B -- no --> C[/"x < y"/]';
+  const html = drawCode(block(code, 3), 1, 'p.md', fakeDraw());
+  const [, attr] = /^<div class="kit-diagram" data-diagram="flowchart" data-source="([^"]*)"><svg /.exec(html) ?? [];
+  assert.ok(attr, html);
+  assert.equal(attributeValue(attr), code);
 });
 
 test('drawCode: a diagram error names the page and the line in the file', () => {
@@ -361,10 +387,10 @@ test('drawDiagrams: every ```mermaid block of a page (also in a list) becomes it
   assert.deepEqual(calls.map((c) => c.options.idPrefix), ['kit-diagram-1-', 'kit-diagram-2-']);
   const [, first, list, last] = tree.children;
   assert.equal(first.type, 'html');
-  assert.match(first.value, /^<div class="kit-diagram" data-diagram="flowchart"><svg/);
+  assert.match(first.value, /^<div class="kit-diagram" data-diagram="flowchart" data-source="flowchart LR&#10;  A --&gt; B"><svg/);
   assert.equal(first.lang, undefined);
   assert.equal(first.position.start.line, 3, 'position kept');
-  assert.match(list.children[0].children[0].value, /data-diagram="sequence"/);
+  assert.match(list.children[0].children[0].value, /data-diagram="sequence" data-source="sequenceDiagram&#10;  A-&gt;&gt;B: hi"/);
   assert.deepEqual(last, before, 'other code blocks untouched');
   assert.ok(isDiagram(block('x', 1)) && !isDiagram(js) && !isDiagram(undefined));
   assert.throws(() => drawDiagrams({ type: 'root', children: [block('a -->> ', 2)] }, 'p.md', fakeDraw(), () => 3),
@@ -808,6 +834,14 @@ test('template: Copy SVG / Save SVG in the viewer, for diagrams only', () => {
   }
   // The copy is made from the diagram on the page (the browser knows its colours there)
   assert.ok(viewer.includes('const svg = current && drawn(current)'));
+  // Copy code: the Mermaid code kept in the box when the site was built, shown only when there is
+  // some; both copy buttons go through the same copy (clipboard or textarea, states, status line)
+  for (const needed of ["'Copy code'", 'current?.dataset.source', 'codeButton.hidden = !mermaidCode()',
+    "copyText(codeButton, mermaidCode(), 'Mermaid code copied')", 'copyText(copyButton, diagramSvg(),',
+    'codeButton, copyButton, saveButton,']) {
+    assert.ok(viewer.includes(needed), needed);
+  }
+  assert.equal(viewer.match(/execCommand\('copy'\)/g)?.length, 1, 'one copy code for both buttons');
   const exporter = readFileSync(join(TEMPLATE, 'src/scripts/diagram-export.mjs'), 'utf8');
   for (const needed of ['getComputedStyle', "removeAttribute('style')", "querySelectorAll('style')", 'XMLSerializer', '--pele-bg']) {
     assert.ok(exporter.includes(needed), needed);

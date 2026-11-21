@@ -5,7 +5,8 @@
 // tested without them (the agent kit's tests/test-docs-features.mjs).
 
 // One ```mermaid block (an mdast `code` node: value, position) -> the HTML that replaces it: the
-// drawn diagram in a <div class="kit-diagram">. `count` numbers the diagrams of the page (their
+// drawn diagram in a <div class="kit-diagram">, its Mermaid code in data-source (the viewer's
+// "Copy code" button, scripts/diagram-zoom.mjs). `count` numbers the diagrams of the page (their
 // ids stay unique). draw(source, { idPrefix }) -> { svg, type }, or throws an error that may say
 // where in the diagram ({ line, column }). A diagram that can't be drawn stops the build: the
 // error gives the page, the line in the page and what is wrong. skipped() -> how many lines of
@@ -18,7 +19,16 @@ export function drawCode(node, count, page, draw, skipped = () => 0) {
     throw diagramError(error, node, page, skipped());
   }
   const type = String(drawn.type || 'diagram').replace(/[^\w-]/g, '');
-  return `<div class="kit-diagram" data-diagram="${type}">${drawn.svg}</div>`;
+  return `<div class="kit-diagram" data-diagram="${type}" data-source="${sourceAttribute(node.value)}">${drawn.svg}</div>`;
+}
+
+// The Mermaid code as an HTML attribute value: & " < > as entities, and the line breaks and tabs
+// too (&#10; &#9;), so nothing on the way (Astro, an HTML minifier) can change the lines. The
+// browser gives the code back as it was written (Windows line ends become plain ones).
+export function sourceAttribute(text) {
+  return String(text ?? '').replace(/\r\n?/g, '\n')
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '&#10;').replace(/\t/g, '&#9;');
 }
 
 // The same for a whole page (an mdast tree, as remark plugins get it): each ```mermaid block

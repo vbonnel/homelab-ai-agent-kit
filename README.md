@@ -19,8 +19,9 @@ One command to build software using AI in your SWE projects:
   or `:::risk`; C4 diagrams are coloured by themselves. A diagram with an error stops
   the build (with the page and line), so it is never merged. Clicking a diagram or a
   picture opens it full screen (zoom and move it; a click closes it). There, a diagram has
-  **Copy SVG** (paste it into Figma or Penpot) and **Save SVG** (an `.svg` file), with the
-  colours of the theme being shown written into it. A **version pill** next to the title
+  **Copy code** (its Mermaid code, that diagram only), **Copy SVG** (paste it into Figma or
+  Penpot) and **Save SVG** (an `.svg` file), the SVG with the colours of the theme being shown
+  written into it. A **version pill** next to the title
   shows which saved version the website was built from.
 - Each page title has a **Copy page** button: it copies the page as Markdown (for AI
   tools); its menu also prints the page and opens it in Claude or ChatGPT: a site with a
@@ -157,7 +158,7 @@ What `kit update` does safely in existing containers:
 - **Preserves your credentials**: never overwrites `~/.config/agent-kit/secrets.env` or project `.env` files.
 
 Projects are never changed by `kit update`. To give a docs website made with an older
-kit the newest docs features (diagrams drawn by pele, diagram and picture zoom, Copy / Save SVG,
+kit the newest docs features (diagrams drawn by pele, diagram and picture zoom, Copy code / Copy / Save SVG,
 version pill, copy-page menu, Export button, "On this page" style, light / dark button, picture
 checks), run this in the project:
 
@@ -192,7 +193,7 @@ or maths in labels show as plain text.
 | `consult usage` | shows token and estimated cost usage for specialist calls |
 | `kit docs url` | shows the docs website address |
 | `kit docs update ["msg"]` | rebuilds docs website after manual edits and saves |
-| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, SVG copy, version pill, copy-page menu, Export button, picture checks...) to an existing docs website |
+| `kit docs upgrade` | adds the kit's docs features (diagrams drawn by pele, diagram and picture zoom, SVG and code copy, version pill, copy-page menu, Export button, picture checks...) to an existing docs website |
 | `kit update` | updates the kit from GitHub (preserves config and secrets) |
 
 ---
@@ -210,7 +211,7 @@ claude/skills/feature/      the /feature command
 claude/skills/consult/      the /consult command for specialist delegation
 claude/skills/init-project/ the /init-project command + project templates
 codex/AGENTS.md             global rules for Codex (linked into ~/.codex/AGENTS.md)
-templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, SVG copy, version pill, page actions, Export button, picture checks)
+templates/docs/             the standard docs website (Starlight, diagrams drawn by pele, diagram and picture zoom, SVG and code copy, version pill, page actions, Export button, picture checks)
 lib/                        helpers (consult.mjs, docs web server, docs upgrade, settings merge)
 ```
 
