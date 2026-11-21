@@ -7,12 +7,14 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import diagrams from './src/diagrams/diagrams.mjs';
 import images from './src/image-tools/images.mjs';
+import pageEdit from './src/page-edit/page-edit.mjs';
 
 export default defineConfig({
   telemetry: false,
   integrations: [
     diagrams(), // ```mermaid blocks drawn by pele (src/diagrams/); before starlight
     images(), // pictures: a few widths each; a too-big original stops the build (npm run images fixes it)
+    pageEdit(), // page text editable in the browser (Edit button, only when the docs server allows it: kit docs edit on)
     starlight({
       title: '__PROJECT_TITLE__',
       // Kit docs features (kit docs upgrade): the docs version next to the title, a full-screen

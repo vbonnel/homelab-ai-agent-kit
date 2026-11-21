@@ -1,0 +1,473 @@
+---
+/**
+ * agent-kit: managed file. `kit docs upgrade` replaces it with the kit's newest version;
+ * delete this line to keep your own version instead.
+ *
+ * Edit button next to the page title (src/components/PageTitle.astro), on the left of the page
+ * actions. Edit: the page's text and its title can be changed in place; a bar at the bottom has
+ * Discard (the text back as it was) and Save. Save sends the changes to the kit's docs server,
+ * which writes them into the page's Markdown file (only the changed words), rebuilds the website
+ * and saves the file in git; the page then reloads. Only text: Enter adds nothing, typed
+ * characters never become formatting; code blocks, diagrams and pictures stay as they are.
+ *
+ * - The text that can be changed is marked when the website is built (src/page-edit/page-edit.mjs:
+ *   span[data-kit-src]); the title's place in the frontmatter is found here (titleRange).
+ * - The button shows only when the docs server answers that editing is on (GET /_kit/edit,
+ *   `kit docs edit on` in the project): a copy of the site served by anything else never shows it.
+ * - The server checks the page file did not change since the website was built (data-hash).
+ * Labels in English, or French on French pages (src/scripts/page-edit.mjs). Not printed.
+ */
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { titleRange } from '../page-edit/markdown-text.mjs';
+import { labels } from '../scripts/page-edit.mjs';
+
+const { entry, lang } = Astro.locals.starlightRoute;
+const fr = /^fr\b/i.test(lang ?? '');
+const t = labels(fr);
+// The page's file as the website is built from it (a path from the docs folder)
+let file = '';
+let hash = '';
+let titleSrc: string | undefined;
+if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
+	try {
+		const bytes = readFileSync(resolve(entry.filePath));
+		hash = createHash('sha256').update(bytes).digest('hex');
+		const title = titleRange(bytes.toString('utf8'));
+		if (title && title.value === entry.data.title) titleSrc = `${title.s}-${title.e}`;
+		file = entry.filePath;
+	} catch {
+		file = '';
+	}
+}
+---
+
+{
+	file && (
+		<kit-page-edit data-file={file} data-hash={hash} data-page-title={entry.data.title} data-title-src={titleSrc} data-lang={fr ? 'fr' : 'en'}>
+			<button type="button" class="kit-edit-open" title={t.editHint} hidden>
+				<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+				<span>{t.edit}</span>
+			</button>
+			<div class="kit-edit-bar" role="region" aria-label={t.region} data-state="" hidden>
+				<span class="kit-edit-status" role="status" />
+				<span class="kit-edit-buttons">
+					<button type="button" class="kit-edit-discard" title={t.discardHint}>{t.discard}</button>
+					<button type="button" class="kit-edit-save" title={t.saveHint}>{t.save}</button>
+				</span>
+			</div>
+		</kit-page-edit>
+	)
+}
+
+<script>
+	import { EDIT_API, SAVED_KEY, cleanPaste, collectEdits, errorMessage, labels, savedMessage } from '../scripts/page-edit.mjs';
+
+	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string };
+
+	// plaintext-only: typing never adds formatting; older browsers get "true" (formatting blocked below)
+	const editableMode = (() => {
+		const probe = document.createElement('span');
+		try {
+			probe.contentEditable = 'plaintext-only';
+			return probe.contentEditable === 'plaintext-only' ? 'plaintext-only' : 'true';
+		} catch {
+			return 'true';
+		}
+	})();
+
+	class KitPageEdit extends HTMLElement {
+		connectedCallback() {
+			const fr = this.dataset.lang === 'fr';
+			const t = labels(fr);
+			const openButton = this.querySelector<HTMLButtonElement>('.kit-edit-open')!;
+			const bar = this.querySelector<HTMLElement>('.kit-edit-bar')!;
+			const status = bar.querySelector<HTMLElement>('.kit-edit-status')!;
+			const buttons = bar.querySelector<HTMLElement>('.kit-edit-buttons')!;
+			const discardButton = bar.querySelector<HTMLButtonElement>('.kit-edit-discard')!;
+			const saveButton = bar.querySelector<HTMLButtonElement>('.kit-edit-save')!;
+			const root = document.documentElement;
+			const heading = document.getElementById('_top');
+			const titleSrc = this.dataset.titleSrc;
+			// Each editable text and its text when editing started
+			const originals = new Map<HTMLElement, string>();
+			let editing = false;
+			let busy = false;
+			let leaving = false;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+
+			const pieces = () => {
+				const list = [...document.querySelectorAll<HTMLElement>('.sl-markdown-content span[data-kit-src]')];
+				if (heading && titleSrc) list.unshift(heading);
+				return list;
+			};
+			const pieceOf = (target: EventTarget | null) => {
+				const el = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+				const piece = el?.closest<HTMLElement>('[data-kit-src]');
+				return piece && originals.has(piece) ? piece : null;
+			};
+			const changed = () => [...originals].filter(([el, text]) => el.textContent !== text);
+			const show = (text: string, state = '') => {
+				clearTimeout(timer);
+				status.textContent = text;
+				bar.dataset.state = state;
+			};
+			const refresh = () => {
+				const n = changed().length;
+				show(n ? t.change(n) : t.idle);
+			};
+			const hint = (text: string) => {
+				show(text);
+				timer = setTimeout(refresh, 2500);
+			};
+
+			// After a save the page reloads: say it was saved, for a few seconds
+			let saved: string | null = null;
+			try {
+				saved = sessionStorage.getItem(SAVED_KEY);
+				sessionStorage.removeItem(SAVED_KEY);
+			} catch {
+				/* no storage: no message */
+			}
+			if (saved !== null) {
+				let info = {};
+				try {
+					info = JSON.parse(saved);
+				} catch {
+					/* old value */
+				}
+				buttons.hidden = true;
+				bar.hidden = false;
+				show(savedMessage(info, fr), 'done');
+				timer = setTimeout(() => {
+					if (!editing) bar.hidden = true;
+				}, 4000);
+			}
+
+			if (!pieces().length) return;
+			fetch(EDIT_API, { cache: 'no-store', headers: { accept: 'application/json' } })
+				.then((r) => (r.ok ? r.json() : null))
+				.then((answer: Answer | null) => {
+					if (answer?.enabled === true) openButton.hidden = false;
+				})
+				.catch(() => {});
+
+			const onBeforeInput = (event: InputEvent) => {
+				if (!pieceOf(event.target)) return;
+				if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+					event.preventDefault();
+					hint(t.newLine);
+				} else if (event.inputType.startsWith('format') || event.inputType === 'insertFromDrop' || event.inputType === 'deleteByDrag') {
+					event.preventDefault();
+				}
+			};
+			const onKeyDown = (event: KeyboardEvent) => {
+				if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') {
+					event.preventDefault();
+					save();
+					return;
+				}
+				if (!pieceOf(event.target)) return;
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					hint(t.newLine);
+				} else if (event.key === 'Escape') {
+					(event.target as HTMLElement).blur();
+				}
+			};
+			const onPaste = (event: ClipboardEvent) => {
+				if (!pieceOf(event.target)) return;
+				event.preventDefault();
+				const text = cleanPaste(event.clipboardData?.getData('text/plain') ?? '');
+				if (text) document.execCommand('insertText', false, text);
+			};
+			const onDrop = (event: DragEvent) => {
+				if (pieceOf(event.target)) event.preventDefault();
+			};
+			// A link of the page text or title places the cursor instead of opening
+			const onClick = (event: MouseEvent) => {
+				const link = (event.target as Element | null)?.closest?.('a');
+				if (link && (link.closest('.sl-markdown-content') || pieceOf(link))) event.preventDefault();
+			};
+			const onInput = (event: Event) => {
+				const piece = pieceOf(event.target);
+				if (!piece) return;
+				piece.classList.toggle('kit-edit-changed', piece.textContent !== originals.get(piece));
+				if (!busy) refresh();
+			};
+			const onLeave = (event: BeforeUnloadEvent) => {
+				if (leaving || !changed().length) return;
+				event.preventDefault();
+				event.returnValue = '';
+			};
+			const listeners: [string, EventListener][] = [
+				['beforeinput', onBeforeInput as EventListener],
+				['keydown', onKeyDown as EventListener],
+				['paste', onPaste as EventListener],
+				['drop', onDrop as EventListener],
+				['click', onClick as EventListener],
+				['input', onInput],
+			];
+
+			const start = () => {
+				if (editing) return;
+				editing = true;
+				for (const el of pieces()) {
+					originals.set(el, el.textContent ?? '');
+					if (el === heading && titleSrc) {
+						el.dataset.kitSrc = titleSrc;
+						el.dataset.kitKind = 'y';
+					}
+					el.contentEditable = editableMode;
+					el.spellcheck = true;
+				}
+				root.classList.add('kit-editing');
+				openButton.hidden = true;
+				buttons.hidden = false;
+				discardButton.disabled = saveButton.disabled = false;
+				bar.hidden = false;
+				refresh();
+				for (const [type, fn] of listeners) document.addEventListener(type, fn, true);
+				window.addEventListener('beforeunload', onLeave);
+			};
+
+			// Leave edit mode; Discard puts every text back as it was
+			const stop = () => {
+				for (const [el, text] of originals) {
+					if (el.textContent !== text) el.textContent = text;
+					el.removeAttribute('contenteditable');
+					el.classList.remove('kit-edit-changed');
+					if (el === heading) {
+						delete el.dataset.kitSrc;
+						delete el.dataset.kitKind;
+					}
+				}
+				originals.clear();
+				editing = false;
+				root.classList.remove('kit-editing');
+				for (const [type, fn] of listeners) document.removeEventListener(type, fn, true);
+				window.removeEventListener('beforeunload', onLeave);
+				clearTimeout(timer);
+				bar.hidden = true;
+				openButton.hidden = false;
+			};
+
+			const save = async () => {
+				if (!editing || busy) return;
+				const edits = collectEdits(
+					[...originals].map(([el, before]) => ({ range: el.dataset.kitSrc, before, after: el.textContent ?? '' })),
+				);
+				if (!edits.length) {
+					stop();
+					return;
+				}
+				busy = true;
+				for (const el of originals.keys()) el.contentEditable = 'false';
+				discardButton.disabled = saveButton.disabled = true;
+				show(t.saving, 'busy');
+				let answer: Answer;
+				try {
+					const response = await fetch(EDIT_API, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json', 'x-kit-edit': '1' },
+						body: JSON.stringify({ page: location.pathname, edits }),
+					});
+					answer = await response.json().catch(() => ({}));
+					if (!response.ok || !answer.ok) answer = { error: answer?.error || 'failed' };
+				} catch {
+					answer = { error: 'network' };
+				}
+				if (answer.ok) {
+					try {
+						sessionStorage.setItem(SAVED_KEY, JSON.stringify({ version: answer.version || '', warning: answer.warning || '' }));
+					} catch {
+						/* reloads without the message */
+					}
+					leaving = true;
+					location.reload();
+					return;
+				}
+				busy = false;
+				for (const el of originals.keys()) el.contentEditable = editableMode;
+				discardButton.disabled = saveButton.disabled = false;
+				show(errorMessage(answer.error ?? 'failed', fr), 'error');
+			};
+
+			openButton.addEventListener('click', start);
+			discardButton.addEventListener('click', stop);
+			saveButton.addEventListener('click', save);
+		}
+	}
+	customElements.define('kit-page-edit', KitPageEdit);
+</script>
+
+<style is:global>
+	kit-page-edit {
+		display: contents;
+	}
+	/* Edit: the same look as the "Copy page" button (components/PageActions.astro) */
+	.kit-edit-open {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-top: 1rem; /* same as the title's, so both sit on one line */
+		padding: 0.4rem 0.75rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.75rem;
+		background: var(--sl-color-bg);
+		color: var(--sl-color-gray-2);
+		font: inherit;
+		font-size: var(--sl-text-sm);
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.kit-edit-open:hover {
+		background: var(--sl-color-gray-6);
+		color: var(--sl-color-white);
+	}
+	.kit-edit-open:focus-visible,
+	.kit-edit-bar button:focus-visible {
+		outline: 2px solid var(--sl-color-text-accent);
+		outline-offset: 2px;
+	}
+	.kit-edit-open svg {
+		width: 1rem;
+		height: 1rem;
+	}
+	.kit-edit-open[hidden],
+	.kit-edit-bar[hidden],
+	.kit-edit-buttons[hidden] {
+		display: none;
+	}
+
+	/* The bar at the bottom of the window while editing (and the "Saved" message) */
+	.kit-edit-bar {
+		position: fixed;
+		inset-inline: 0;
+		bottom: 1rem;
+		z-index: 15; /* over the page and its top bar's shadow, under the full-screen viewer */
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.75rem;
+		width: min(44rem, calc(100% - 2rem));
+		margin-inline: auto;
+		padding: 0.5rem 0.5rem 0.5rem 1rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 1rem;
+		background: var(--sl-color-bg-nav);
+		box-shadow: var(--sl-shadow-lg);
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+	}
+	.kit-edit-status {
+		flex: 1 1 12rem;
+		min-width: 0;
+		padding-block: 0.4rem;
+	}
+	.kit-edit-bar[data-state='error'] .kit-edit-status {
+		color: var(--sl-color-red-high);
+	}
+	.kit-edit-bar[data-state='done'] .kit-edit-status {
+		color: var(--sl-color-text-accent);
+	}
+	.kit-edit-bar[data-state='busy'] .kit-edit-status::before {
+		content: '';
+		display: inline-block;
+		width: 0.85rem;
+		height: 0.85rem;
+		margin-inline-end: 0.5rem;
+		vertical-align: -0.15rem;
+		border: 2px solid var(--sl-color-gray-5);
+		border-top-color: var(--sl-color-text-accent);
+		border-radius: 50%;
+		animation: kit-edit-turn 0.8s linear infinite;
+	}
+	@keyframes kit-edit-turn {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.kit-edit-bar[data-state='busy'] .kit-edit-status::before {
+			animation: none;
+		}
+	}
+	.kit-edit-buttons {
+		display: inline-flex;
+		gap: 0.5rem;
+		margin-inline-start: auto;
+	}
+	.kit-edit-bar button {
+		height: 2.25rem;
+		padding: 0 0.9rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 0.75rem;
+		background: var(--sl-color-bg);
+		color: var(--sl-color-gray-2);
+		font: inherit;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.kit-edit-bar button:hover {
+		background: var(--sl-color-gray-6);
+		color: var(--sl-color-white);
+	}
+	.kit-edit-bar .kit-edit-save,
+	.kit-edit-bar .kit-edit-save:hover {
+		border-color: var(--sl-color-text-accent);
+		background: var(--sl-color-text-accent);
+		color: var(--sl-color-black);
+	}
+	.kit-edit-bar .kit-edit-save:hover {
+		opacity: 0.88;
+	}
+	.kit-edit-bar button:disabled {
+		opacity: 0.55;
+		cursor: progress;
+	}
+	@media (max-width: 40rem) {
+		/* Phones: the bar is the bottom of the screen */
+		.kit-edit-bar {
+			bottom: 0;
+			width: 100%;
+			padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+			border-width: 1px 0 0;
+			border-radius: 0;
+		}
+	}
+
+	/* While editing: the text that can be changed shows it on hover, the one being typed in has
+	   an accent outline, the changed ones a light accent background; what can't be changed fades */
+	:root.kit-editing body {
+		padding-bottom: 6rem; /* the bar never hides the end of the page */
+	}
+	:root.kit-editing [data-kit-src][contenteditable] {
+		border-radius: 0.2rem;
+		outline: 1px dashed transparent;
+		outline-offset: 1px;
+		cursor: text;
+		-webkit-box-decoration-break: clone;
+		box-decoration-break: clone;
+	}
+	:root.kit-editing [data-kit-src][contenteditable]:hover {
+		outline-color: var(--sl-color-gray-3);
+	}
+	:root.kit-editing [data-kit-src][contenteditable]:focus {
+		outline: 2px solid var(--sl-color-text-accent);
+	}
+	:root.kit-editing [data-kit-src].kit-edit-changed {
+		background: var(--sl-color-accent-low);
+	}
+	:root.kit-editing .sl-markdown-content :is(.expressive-code, pre, .diagram-zoom, img) {
+		opacity: 0.45;
+	}
+	@media print {
+		kit-page-edit {
+			display: none !important;
+		}
+	}
+</style>
