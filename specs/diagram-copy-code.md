@@ -1,6 +1,6 @@
 # Docs websites: copy a diagram as its Mermaid code
 
-Status: planning
+Status: approved
 Size: small
 Database change: no
 New settings (.env keys): none
