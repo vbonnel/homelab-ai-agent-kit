@@ -13,6 +13,8 @@
 // size when fitted (no blurry blow-up), and can still be zoomed in.
 // A diagram open in the viewer can be copied as SVG (paste it into Figma or Penpot) or saved as
 // an .svg file: "Copy SVG" / "Save SVG" in the bar (scripts/diagram-export.mjs makes the SVG).
+// "Copy code" copies its Mermaid code, just that diagram's (kept in the box's data-source when the
+// website is built, src/diagrams/draw.mjs; diagrams without it: no button).
 import { fitView, isDoubleClick, zoomAt, zoomLimits } from './zoom-math.mjs';
 import { selfContainedSvg, svgFileName } from './diagram-export.mjs';
 
@@ -21,9 +23,9 @@ const HINT = 'Scroll or pinch to zoom, drag to move, click or Esc to close';
 const CLICK_MOVE = 6;   // pixels a click may move and still be a click (more: a drag)
 const DOUBLE_TIME = 300; // milliseconds: a single click closes after this, unless a second one comes
 
-let dialog, stage, layer, level, fitButton, copyButton, saveButton, status;
+let dialog, stage, layer, level, fitButton, codeButton, copyButton, saveButton, status;
 let current = null;          // the diagram open in the viewer (null: a picture)
-let copyReset = 0;
+const resets = new Map();    // copy button -> its timer back to "idle"
 let view = { scale: 1, x: 0, y: 0 };
 let limits = { min: 0.5, max: 4 };
 let size = { w: 0, h: 0 };   // the diagram's or picture's own size
@@ -103,6 +105,20 @@ function tool(label, text, action) {
   return b;
 }
 
+// A copy button holds its three labels in one place (CSS shows the one of its state): same width
+function copyTool(label, text, action) {
+  const b = tool(label, '', action);
+  b.classList.add('diagram-zoom-copy');
+  for (const [state, words] of [['idle', text], ['copied', 'Copied!'], ['failed', 'Copy failed']]) {
+    const span = document.createElement('span');
+    span.dataset.when = state;
+    span.textContent = words;
+    b.append(span);
+  }
+  b.dataset.state = 'idle';
+  return b;
+}
+
 function makeViewer() {
   dialog = document.createElement('dialog');
   dialog.className = 'diagram-zoom-viewer';
@@ -115,22 +131,14 @@ function makeViewer() {
   level = document.createElement('span');
   level.className = 'diagram-zoom-level';
   level.setAttribute('aria-live', 'polite');
-  // Copy SVG holds its three labels in one place (CSS shows the one of its state): same width
-  copyButton = tool('Copy SVG: paste it into Figma or Penpot', '', copySvg);
-  copyButton.classList.add('diagram-zoom-copy');
-  for (const [state, text] of [['idle', 'Copy SVG'], ['copied', 'Copied!'], ['failed', 'Copy failed']]) {
-    const label = document.createElement('span');
-    label.dataset.when = state;
-    label.textContent = text;
-    copyButton.append(label);
-  }
-  copyButton.dataset.state = 'idle';
+  codeButton = copyTool("Copy code: the diagram's Mermaid code", 'Copy code', copyCode);
+  copyButton = copyTool('Copy SVG: paste it into Figma or Penpot', 'Copy SVG', copySvg);
   saveButton = tool('Save SVG: download the diagram as a file', 'Save SVG', saveSvg);
   status = document.createElement('span');
   status.className = 'sr-only';
   status.setAttribute('role', 'status');
   bar.append(
-    hint, level, status, copyButton, saveButton,
+    hint, level, status, codeButton, copyButton, saveButton,
     tool('Zoom out (-)', '−', () => zoomCentre(1 / STEP)),
     tool('Zoom in (+)', '+', () => zoomCentre(STEP)),
     fitButton = tool('Show the whole diagram (0)', 'Fit', fit),
@@ -208,8 +216,11 @@ function makeViewer() {
     clearTimeout(closeTimer);
     stage.classList.remove('dragging');
     current = null;
-    clearTimeout(copyReset);
-    copyButton.dataset.state = 'idle';
+    for (const [button, timer] of resets) {
+      clearTimeout(timer);
+      button.dataset.state = 'idle';
+    }
+    resets.clear();
     status.textContent = '';
   });
 
@@ -274,6 +285,7 @@ function openPicture(img) {
 function showViewer(label, fitLabel, largest) {
   dialog.setAttribute('aria-label', label);
   copyButton.hidden = saveButton.hidden = !current; // diagrams only
+  codeButton.hidden = !mermaidCode();               // diagrams that have their code
   fitButton.title = fitLabel;
   fitButton.setAttribute('aria-label', fitLabel);
   most = largest;
@@ -281,20 +293,27 @@ function showViewer(label, fitLabel, largest) {
   fit();
 }
 
-// --- Copy SVG / Save SVG (the diagram open in the viewer) ------------------------------
+// --- Copy code / Copy SVG / Save SVG (the diagram open in the viewer) ------------------
 // The SVG is made from the diagram on the page, where the browser knows its colours
 const diagramSvg = () => {
   const svg = current && drawn(current);
   return svg ? selfContainedSvg(svg) : '';
 };
 
+// The Mermaid code as written in the page (the browser has turned data-source's &#10; &quot;...
+// back into the real lines and characters); '' for a picture or a diagram without it
+const mermaidCode = () => current?.dataset.source ?? '';
+
+const copyCode = () => copyText(codeButton, mermaidCode(), 'Mermaid code copied');
+const copySvg = () => copyText(copyButton, diagramSvg(), 'Copied! Paste it into Figma or Penpot');
+
 // The clipboard on HTTPS; on plain HTTP (a site on the local network) a hidden textarea, put
-// inside the viewer (while it is open, the rest of the page can't be used, not even to copy)
-async function copySvg() {
+// inside the viewer (while it is open, the rest of the page can't be used, not even to copy).
+// The button says "Copied!" or "Copy failed" for 2 s, the status line tells screen readers.
+async function copyText(button, text, message) {
   let ok = false;
   try {
-    const text = diagramSvg();
-    if (!text) throw new Error('no diagram');
+    if (!text) throw new Error('nothing to copy');
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
       ok = true;
@@ -307,18 +326,20 @@ async function copySvg() {
       area.select();
       ok = document.execCommand('copy');
       area.remove();
-      copyButton.focus();
+      button.focus();
     }
   } catch {
     ok = false;
   }
-  copyButton.dataset.state = ok ? 'copied' : 'failed';
-  status.textContent = ok ? 'Copied! Paste it into Figma or Penpot' : 'Copy failed';
-  clearTimeout(copyReset);
-  copyReset = setTimeout(() => {
-    copyButton.dataset.state = 'idle';
-    status.textContent = '';
-  }, 2000);
+  const said = ok ? message : 'Copy failed';
+  button.dataset.state = ok ? 'copied' : 'failed';
+  status.textContent = said;
+  clearTimeout(resets.get(button));
+  resets.set(button, setTimeout(() => {
+    button.dataset.state = 'idle';
+    resets.delete(button);
+    if (status.textContent === said) status.textContent = ''; // not the other button's message
+  }, 2000));
 }
 
 // A file named after the page and the diagram's place on it: getting-started-diagram-2.svg
