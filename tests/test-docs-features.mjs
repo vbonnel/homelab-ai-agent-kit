@@ -16,8 +16,8 @@ import { fitView, isDoubleClick, zoomAt, zoomLimits } from '../templates/docs/sr
 import { docsVersion } from '../templates/docs/src/version.mjs';
 import { drawCode, drawDiagrams, diagramError, isDiagram, linesBefore, sourceAttribute } from '../templates/docs/src/diagrams/draw.mjs';
 import {
-  MARKER, KIT_COMPONENTS, KIT_DIAGRAMS, KIT_IMAGES, addComponents, addImagesScript, upgradeDocs, useKitDiagrams,
-  useKitImages, usesKitDiagrams, usesKitImages,
+  MARKER, KIT_COMPONENTS, KIT_DIAGRAMS, KIT_IMAGES, KIT_PAGE_EDIT, addComponents, addImagesScript, upgradeDocs, useKitDiagrams,
+  useKitImages, useKitPageEdit, usesKitDiagrams, usesKitImages, usesKitPageEdit,
 } from '../lib/docs-upgrade.mjs';
 import { pageMarkdown } from '../templates/docs/src/scripts/page-markdown.mjs';
 import { INHERITED, PAINT, exportAttributes, svgFileName, toHex } from '../templates/docs/src/scripts/diagram-export.mjs';
@@ -26,7 +26,8 @@ import { findRefs, renameRefs, sitePictures, userFiles, withoutComments } from '
 
 const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEMPLATE = join(KIT_DIR, 'templates/docs');
-const KIT_FILES = [...Object.values(KIT_COMPONENTS).flatMap((c) => c.files), ...KIT_DIAGRAMS.files, ...KIT_IMAGES.files];
+const KIT_FILES = [...new Set([...Object.values(KIT_COMPONENTS).flatMap((c) => c.files), ...KIT_DIAGRAMS.files, ...KIT_IMAGES.files,
+  ...KIT_PAGE_EDIT.files])];
 const KINDS = ['service', 'ui', 'data', 'queue', 'external', 'person', 'new', 'risk'];
 const near = (a, b) => Math.abs(a - b) < 1e-6;
 
@@ -89,6 +90,9 @@ export default defineConfig({
 });
 `;
 const TEMPLATE_CONFIG = readFileSync(join(TEMPLATE, 'astro.config.mjs'), 'utf8');
+// A config without the Edit button's integration (the kit templates before it)
+const withoutPageEdit = (text) => text.replace(/^import pageEdit from .*\n/m, '').replace(/^ {4}pageEdit\(\),.*\n/m, '');
+const EXPORT_CONFIG = withoutPageEdit(TEMPLATE_CONFIG);
 const COMMENT_NOW = '      // Kit docs features (kit docs upgrade): the docs version next to the title, a full-screen\n'
   + '      // viewer (click a diagram or a picture to zoom and move it; copy or save a diagram as SVG),\n'
   + '      // page actions next to the page title (copy as Markdown, print), an Export button (the whole\n'
@@ -108,14 +112,14 @@ const PREVIOUS_UPGRADED = PREVIOUS_CONFIG.replace(
   + '      // "Enlarge" button on each diagram (zoom and move it full screen)\n',
   COMMENT_NOW).replace('      components: {\n', `      components: {\n${NEW_ENTRIES}`);
 // The template of the kit before the page actions and pictures (diagrams already drawn by pele)
-const LAST_CONFIG = TEMPLATE_CONFIG
+const LAST_CONFIG = EXPORT_CONFIG
   .replace(COMMENT_NOW, '      // Kit docs features (kit docs upgrade): the docs version next to the title, and a\n'
     + '      // full-screen viewer: click a diagram or a picture to zoom and move it\n')
   .replace(NEW_ENTRIES, '')
   .replace(/^import images from .*\n/m, '')
   .replace(/^ {4}images\(\),.*\n/m, '');
 // The template of the kit with page actions and pictures, before the Export button and the SVG copy
-const PAGE_TOOLS_CONFIG = TEMPLATE_CONFIG.replace(COMMENT_NOW, COMMENT_PAGE_TOOLS).replace(SOCIAL_ENTRY, '');
+const PAGE_TOOLS_CONFIG = EXPORT_CONFIG.replace(COMMENT_NOW, COMMENT_PAGE_TOOLS).replace(SOCIAL_ENTRY, '');
 
 const tempDir = (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'kit-docs-'));
@@ -458,8 +462,9 @@ test('addComponents: the older kit comment (Enlarge button) is brought up to dat
 test('useKitDiagrams: the kit\'s astro-mermaid lines become exactly the new template', () => {
   const r = useKitDiagrams(PREVIOUS_UPGRADED);
   assert.deepEqual({ switched: r.switched, from: r.from, kept: r.kept }, { switched: true, from: 'astro-mermaid', kept: '' });
-  assert.equal(useKitImages(r.text).text, TEMPLATE_CONFIG);
-  assert.equal(useKitImages(useKitDiagrams(addComponents(OLD_CONFIG).text).text).text, TEMPLATE_CONFIG, 'the oldest config too');
+  assert.equal(useKitPageEdit(useKitImages(r.text).text).text, TEMPLATE_CONFIG);
+  assert.equal(useKitPageEdit(useKitImages(useKitDiagrams(addComponents(OLD_CONFIG).text).text).text).text, TEMPLATE_CONFIG,
+    'the oldest config too');
   const again = useKitDiagrams(r.text);
   assert.deepEqual(again, { text: r.text, switched: false, from: '', kept: '' }, 'a second run changes nothing');
 });
@@ -598,8 +603,10 @@ test('addComponents + useKitImages: the last kit template becomes exactly the ne
   assert.deepEqual(c.added, ['SocialIcons', 'PageTitle', 'TableOfContents', 'ThemeSelect']);
   const i = useKitImages(c.text);
   assert.equal(i.added, true);
-  assert.equal(i.text, TEMPLATE_CONFIG);
-  assert.equal(useKitImages(addComponents(i.text).text).text, i.text, 'a second run changes nothing');
+  const e = useKitPageEdit(i.text);
+  assert.equal(e.added, true);
+  assert.equal(e.text, TEMPLATE_CONFIG);
+  assert.equal(useKitPageEdit(useKitImages(addComponents(e.text).text).text).text, e.text, 'a second run changes nothing');
 });
 
 test('useKitImages: after `import starlight` without diagrams; kept when it cannot be placed', () => {
@@ -874,7 +881,7 @@ test('addComponents: the page-tools template gets the Export button and today\'s
   assert.notEqual(PAGE_TOOLS_CONFIG, TEMPLATE_CONFIG);
   const r = addComponents(PAGE_TOOLS_CONFIG);
   assert.deepEqual({ added: r.added, kept: r.kept, problem: r.problem }, { added: ['SocialIcons'], kept: [], problem: '' });
-  assert.equal(r.text, TEMPLATE_CONFIG);
+  assert.equal(useKitPageEdit(r.text).text, TEMPLATE_CONFIG);
   assert.equal(addComponents(r.text).text, r.text, 'a second run changes nothing');
   // A project with its own SocialIcons: kept; the comment is still brought up to date
   const own = PAGE_TOOLS_CONFIG.replace('      components: {\n', "      components: {\n        SocialIcons: './src/components/MySocial.astro',\n");

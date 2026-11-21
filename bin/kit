@@ -409,7 +409,7 @@ cmd_docs_update() {
 }
 
 # Add the kit's docs features (diagram zoom with Copy code / Copy / Save SVG, version pill, diagrams drawn by
-# pele, page actions, Export button, "On this page" style, light / dark button, picture checks) to an existing
+# pele, page actions, Export button, Edit button, "On this page" style, light / dark button, picture checks) to an existing
 # docs website, or bring their files up to date. Pages are never touched. Works in a work copy too
 # (for /feature).
 cmd_docs_upgrade() {
@@ -419,6 +419,9 @@ cmd_docs_upgrade() {
   [ -f "$dir/package.json" ] || die "No docs website in this project ($DOCS_DIR/). Run: kit docs init \"Title\"" 2
   say "Adding the kit docs features to $DOCS_DIR/ ..."
   node "$KIT_DIR/lib/docs-upgrade.mjs" "$dir" || die "Nothing was changed (see above)."
+  # Astro keeps the pages it rendered (and reuses them while a page doesn't change): the next build
+  # must render them again, with the kit's new Markdown plugins (diagram code, editable text)
+  rm -f "$dir/node_modules/.astro/data-store.json"
   # Diagrams now drawn by pele: its package replaces astro-mermaid and mermaid
   if grep -q "src/diagrams/diagrams.mjs" "$dir/astro.config.mjs" && ! grep -q '"pele"' "$dir/package.json"; then
     say "Installing pele (draws the diagrams) instead of astro-mermaid..."
@@ -430,6 +433,52 @@ cmd_docs_upgrade() {
     ok "pele installed, astro-mermaid and mermaid removed"
   fi
   say "Next: kit docs build, then save the change. If the build says pictures are too big: cd $DOCS_DIR && npm run images"
+}
+
+# Changing page text in the browser (the Edit button next to page titles, made by the docs template):
+# on / off for this project, as DOCS_EDIT in .agentkit (the docs server reads it on each request).
+# .agentkit is saved alone in git, so the setting goes with the project.
+cmd_docs_edit() {
+  need_repo
+  in_workcopy && die "Run this in the real project, not a work copy."
+  local root; root="$(here_root)"; load_project_conf "$root"
+  [ -f "$root/$DOCS_DIR/package.json" ] || die "No docs website in this project ($DOCS_DIR/). Run: kit docs init \"Title\"" 2
+  local f="$root/.agentkit" want="${1:-status}" now url unit
+  now="$(sed -n 's/^DOCS_EDIT=//p' "$f" 2>/dev/null | tail -n1)"
+  url="$(cd "$root" && cmd_docs_url)"
+  case "$want" in
+    status)
+      if [ "$now" = "on" ]; then say "Editing in the browser: ON ($url: anyone who can open it can change its pages)"
+      else say "Editing in the browser: off (turn it on with: kit docs edit on)"; fi
+      [ -f "$root/$DOCS_DIR/src/components/PageEdit.astro" ] \
+        || say "This website has no Edit button yet: add the kit docs features first (kit docs upgrade, through /feature)."
+      return 0;;
+    on|off) ;;
+    *) die "Usage: kit docs edit on | off | status";;
+  esac
+  if grep -q '^DOCS_EDIT=' "$f" 2>/dev/null; then sed -i "s/^DOCS_EDIT=.*/DOCS_EDIT=$want/" "$f"
+  else
+    [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && echo >> "$f"
+    printf 'DOCS_EDIT=%s\n' "$want" >> "$f"
+  fi
+  if ! git -C "$root" check-ignore -q .agentkit && [ -n "$(git -C "$root" status --porcelain -- .agentkit)" ]; then
+    if git -C "$root" add -- .agentkit && git -C "$root" commit -q -m "docs: editing in the browser $want" -- .agentkit; then
+      say "SAVED: $(git -C "$root" rev-parse --short HEAD) - docs: editing in the browser $want (.agentkit)"
+    else warn "Could not save .agentkit in git (the setting still applies). Is git user.name/user.email set? Run: kit doctor"; fi
+  fi
+  # A docs server started before this kit version doesn't know the Edit requests yet: restart it
+  unit="agent-kit-docs-$(clean_name "$(basename "$root")")"
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active -q "$unit" 2>/dev/null; then
+    systemctl restart "$unit" && ok "Docs service restarted ($unit)" || warn "Could not restart $unit"
+  fi
+  if [ "$want" = "on" ]; then
+    say "EDITING ON: an Edit button is next to each page title of $url"
+    warn "Anyone who can open $url can now change its pages (each save is a git version: undo works)."
+    [ -f "$root/$DOCS_DIR/src/components/PageEdit.astro" ] \
+      || say "This website has no Edit button yet: add the kit docs features first (kit docs upgrade, through /feature)."
+  else
+    say "EDITING OFF: the pages of $url can no longer be changed in the browser."
+  fi
 }
 
 cmd_docs_url() {
@@ -483,8 +532,9 @@ cmd_docs() {
     build) cmd_docs_build "$@";;
     update) cmd_docs_update "$@";;
     service) cmd_docs_service "$@";;
+    edit) cmd_docs_edit "$@";;
     url) cmd_docs_url;;
-    *) die "Usage: kit docs init \"Title\" | upgrade | build | update [\"msg\"] | service [port] | url";;
+    *) die "Usage: kit docs init \"Title\" | upgrade | build | update [\"msg\"] | service [port] | edit on|off | url";;
   esac
 }
 
@@ -540,7 +590,8 @@ kit - homelab agent kit helper (normally used by Claude, not typed by you)
   kit consult ...            delegate a read-only task (review, investigate, tests, compare, ask)
   kit docs url               show the docs website address
   kit docs update ["msg"]    after editing docs pages: rebuild the website and save them
-  kit docs upgrade           add the kit's docs features (diagrams by pele, zoom, SVG and code copy, version pill, page actions, Export, picture checks) to a docs website
+  kit docs upgrade           add the kit's docs features (diagrams by pele, zoom, SVG and code copy, version pill, page actions, Export, Edit, picture checks) to a docs website
+  kit docs edit on|off       let anyone who can open the docs website change its pages' text in the browser (off by default)
 
 Used by Claude / Codex during /feature, /consult and /init-project:
   kit start <name> [--anyway]   create a work copy (branch feature/<name>)
@@ -551,7 +602,7 @@ Used by Claude / Codex during /feature, /consult and /init-project:
   kit discard <name>            delete a work copy (real project untouched)
   kit env-keys                  list .env key names (never values)
   kit env-ensure KEY            add an empty KEY= line to .env
-  kit docs init "Title" | upgrade | build | update ["msg"] | service [port] | url
+  kit docs init "Title" | upgrade | build | update ["msg"] | service [port] | edit on|off|status | url
   consult <task> [options]      delegate to Anthropic, OpenAI, or Gemini (see: consult help)
 EOF
 }

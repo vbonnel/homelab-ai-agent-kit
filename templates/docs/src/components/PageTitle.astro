@@ -4,14 +4,16 @@
  * delete this line to keep your own version instead.
  *
  * Page title: Starlight's own title, with the page actions on its right (copy the page as
- * Markdown, print it, open it in Claude / ChatGPT: src/components/PageActions.astro). On a
- * narrow screen the actions go under the title. Starlight shows no title on pages with a hero
- * (a splash homepage), so they get no actions; the 404 page gets none either.
+ * Markdown, print it, open it in Claude / ChatGPT: src/components/PageActions.astro) and, on
+ * their left, the Edit button when the docs server allows editing (src/components/PageEdit.astro).
+ * On a narrow screen the buttons go under the title. Starlight shows no title on pages with a
+ * hero (a splash homepage), so they get no buttons; the 404 page gets none either.
  *
  * Set in astro.config.mjs (`components: { PageTitle: ... }`).
  */
 import Default from '@astrojs/starlight/components/PageTitle.astro';
 import PageActions from './PageActions.astro';
+import PageEdit from './PageEdit.astro';
 
 const { entry } = Astro.locals.starlightRoute;
 // The 404 page is not a page of the docs collection: it has no Markdown version
@@ -22,7 +24,10 @@ const withActions = Astro.url.pathname.replace(/\/$/, '').split('/').pop() !== '
 	withActions ? (
 		<div class="kit-title-row">
 			<Default />
-			<PageActions />
+			<div class="kit-title-buttons">
+				<PageEdit />
+				<PageActions />
+			</div>
 		</div>
 	) : (
 		<Default />
@@ -36,5 +41,12 @@ const withActions = Astro.url.pathname.replace(/\/$/, '').split('/').pop() !== '
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.5rem 1rem;
+	}
+	/* Edit (when shown) then Copy page: Copy page keeps its place when Edit appears */
+	.kit-title-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
 	}
 </style>
