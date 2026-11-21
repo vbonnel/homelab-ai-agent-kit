@@ -1,6 +1,6 @@
 # Docs websites: change a page's text in the browser (Edit / Save / Discard)
 
-Status: building
+Status: tests passed (next: headless browser check on the playground, docs, final check)
 Size: normal
 Database change: no
 New settings (.env keys): none. New project setting in `.agentkit`: `DOCS_EDIT=on` (off when
@@ -153,7 +153,7 @@ no browser):
 `tests/test-docs-features.mjs`: the exact-template checks updated for the new config lines.
 
 ## Acceptance checks
-- [ ] `scripts/test.sh` passes
+- [x] `scripts/test.sh` passes (74 tests)
 - [ ] A throwaway docs site (this work copy's template, Astro 7) builds; its pages carry
       `data-kit-src` spans whose ranges hold their text (checked for every span of every page)
 - [ ] Docs playground site (a permanent test site in the kit's container, editing on): in a
