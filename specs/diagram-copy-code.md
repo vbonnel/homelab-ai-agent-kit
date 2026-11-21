@@ -1,6 +1,6 @@
 # Docs websites: copy a diagram as its Mermaid code
 
-Status: tests passed
+Status: ready to merge
 Size: small
 Database change: no
 New settings (.env keys): none
