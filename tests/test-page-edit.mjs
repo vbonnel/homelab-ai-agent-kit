@@ -560,6 +560,10 @@ test('template: the Edit button, its bar and what it sends; marked files; no add
   assert.ok(!edit.includes('kit-edit-changed'), 'no changed-text highlight');
   assert.doesNotMatch(edit, /kit-editing body \{[^}]*padding-bottom/, 'no space added under the page');
   assert.match(edit, /:root\.kit-editing \{\s*scroll-padding-bottom: 6rem;/);
+  // The bar is centred on the window, not on the part right of the sidebar
+  const barRule = /\n\t\.kit-edit-bar \{([^}]*)\}/.exec(edit)[1];
+  assert.match(barRule, /inset-inline: 1rem;/);
+  assert.ok(!barRule.includes('--sl-content-inline-start'));
   for (const rel of [...KIT_PAGE_EDIT.files, 'src/components/PageEdit.astro', 'src/scripts/page-edit.mjs']) {
     const text = readFileSync(join(TEMPLATE, rel), 'utf8');
     assert.ok(text.includes(MARKER), `${rel} marker`);
