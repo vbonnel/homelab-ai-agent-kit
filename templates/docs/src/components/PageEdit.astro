@@ -7,8 +7,11 @@
  * actions. Edit: the page's text and its title can be changed in place; a bar at the bottom has
  * Discard (the text back as it was) and Save. Save sends the changes to the kit's docs server,
  * which writes them into the page's Markdown file (only the changed words), rebuilds the website
- * and saves the file in git; the page then reloads. Only text: Enter adds nothing, typed
- * characters never become formatting; code blocks, diagrams and pictures stay as they are.
+ * and saves the file in git; the page then reloads. Text and new lines: Enter = a new paragraph
+ * (a new item in a list), Shift+Enter = a new line in the paragraph, both a new line in a table
+ * cell; none in a title, a heading, bold, a link or code. Typed characters never become
+ * formatting; code blocks, diagrams and pictures stay as they are. A click anywhere in a table
+ * cell (or a paragraph) puts the cursor in its text.
  *
  * - The text that can be changed is marked when the website is built (src/page-edit/page-edit.mjs:
  *   span[data-kit-src]); the title's place in the frontmatter is found here (titleRange).
@@ -64,13 +67,13 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 }
 
 <script>
-	import { EDIT_API, SAVED_KEY, cleanPaste, collectEdits, errorMessage, labels, savedMessage } from '../scripts/page-edit.mjs';
+	import { EDIT_API, SAVED_KEY, breaksFor, cleanPaste, collectEdits, errorMessage, labels, pieceText, savedMessage } from '../scripts/page-edit.mjs';
 
 	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string; detail?: unknown; links?: number };
 
 	// contenteditable="true", not "plaintext-only": browsers show a plaintext-only text's line ends as
-	// breaks (the paragraph would change shape). Formatting, new lines, rich paste and drops are
-	// blocked below, and only the text (textContent) is ever sent.
+	// breaks (the paragraph would change shape). Formatting, rich paste and drops are blocked below;
+	// new lines are <br> put by Enter / Shift+Enter, sent as U+2028 with the text (pieceText).
 	const editableMode = 'true';
 
 	class KitPageEdit extends HTMLElement {
@@ -106,7 +109,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				const piece = el?.closest<HTMLElement>('[data-kit-src]');
 				return piece && originals.has(piece) ? piece : null;
 			};
-			const changed = () => [...originals].filter(([el, text]) => el.textContent !== text);
+			const changed = () => [...originals].filter(([el, text]) => pieceText(el) !== text);
 			const show = (text: string, state = '') => {
 				clearTimeout(timer);
 				status.textContent = text;
@@ -152,11 +155,34 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				})
 				.catch(() => {});
 
+			// Enter / Shift+Enter: <br> at the cursor where the build allows new lines (kind b), else a hint
+			const insertBreaks = (piece: HTMLElement, n: number) => {
+				const selection = getSelection();
+				if (!selection?.rangeCount) return;
+				const range = selection.getRangeAt(0);
+				if (!piece.contains(range.startContainer) || !piece.contains(range.endContainer)) return;
+				range.deleteContents();
+				for (let k = 0; k < n; k++) {
+					const br = document.createElement('br');
+					range.insertNode(br);
+					range.setStartAfter(br);
+				}
+				range.collapse(true);
+				selection.removeAllRanges();
+				selection.addRange(range);
+				refresh();
+			};
+			const newLine = (piece: HTMLElement, shift: boolean) => {
+				const kind = piece.dataset.kitKind ?? '';
+				if (!kind.includes('b')) hint(t.newLine);
+				else insertBreaks(piece, breaksFor({ shift, cell: kind.includes('t') }));
+			};
 			const onBeforeInput = (event: InputEvent) => {
-				if (!pieceOf(event.target)) return;
+				const piece = pieceOf(event.target);
+				if (!piece) return;
 				if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
 					event.preventDefault();
-					hint(t.newLine);
+					newLine(piece, event.inputType === 'insertLineBreak');
 				} else if (event.inputType.startsWith('format') || event.inputType === 'insertFromDrop' || event.inputType === 'deleteByDrag') {
 					event.preventDefault();
 				}
@@ -167,10 +193,12 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 					save();
 					return;
 				}
-				if (!pieceOf(event.target)) return;
+				const piece = pieceOf(event.target);
+				if (!piece) return;
 				if (event.key === 'Enter') {
+					if (event.isComposing) return; // the Enter that ends typing with an input method
 					event.preventDefault();
-					hint(t.newLine);
+					newLine(piece, event.shiftKey);
 				} else if (event.key === 'Escape') {
 					(event.target as HTMLElement).blur();
 				}
@@ -184,10 +212,43 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 			const onDrop = (event: DragEvent) => {
 				if (pieceOf(event.target)) event.preventDefault();
 			};
+			// A click in a table cell, paragraph, list item or heading but not on its text: the cursor
+			// goes into the nearest text of it that can be changed (its end, or its start when the
+			// click was before it)
+			const placeCaretNear = (target: Element | null, x: number, y: number) => {
+				const block = target?.closest?.('.sl-markdown-content :is(td, th, p, li, h1, h2, h3, h4, h5, h6)');
+				const selection = getSelection();
+				if (!block || !selection || !selection.isCollapsed) return;
+				let best: HTMLElement | null = null;
+				let bestDistance = Infinity;
+				let atEnd = true;
+				for (const el of block.querySelectorAll<HTMLElement>('span[data-kit-src]')) {
+					if (!originals.has(el)) continue;
+					for (const r of el.getClientRects()) {
+						const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+						const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+						const distance = dy * 1000 + dx; // the nearest line first, then along it
+						if (distance < bestDistance) {
+							bestDistance = distance;
+							best = el;
+							atEnd = y > r.bottom || x >= r.left + r.width / 2;
+						}
+					}
+				}
+				if (!best) return;
+				best.focus({ preventScroll: true });
+				const range = document.createRange();
+				range.selectNodeContents(best);
+				range.collapse(!atEnd);
+				selection.removeAllRanges();
+				selection.addRange(range);
+			};
 			// A link of the page text or title places the cursor instead of opening
 			const onClick = (event: MouseEvent) => {
-				const link = (event.target as Element | null)?.closest?.('a');
+				const target = event.target as Element | null;
+				const link = target?.closest?.('a');
 				if (link && (link.closest('.sl-markdown-content') || pieceOf(link))) event.preventDefault();
+				if (!pieceOf(target)) placeCaretNear(target, event.clientX, event.clientY);
 			};
 			// Typing: the bar counts the changed texts (they get no colour of their own)
 			const onInput = (event: Event) => {
@@ -232,7 +293,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 			// Leave edit mode; Discard puts every text back as it was
 			const stop = () => {
 				for (const [el, text] of originals) {
-					if (el.textContent !== text) el.textContent = text;
+					if (pieceText(el) !== text) el.textContent = text;
 					el.removeAttribute('contenteditable');
 					if (el === heading) {
 						delete el.dataset.kitSrc;
@@ -252,7 +313,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 			const save = async () => {
 				if (!editing || busy) return;
 				const edits = collectEdits(
-					[...originals].map(([el, before]) => ({ range: el.dataset.kitSrc, before, after: el.textContent ?? '' })),
+					[...originals].map(([el, before]) => ({ range: el.dataset.kitSrc, before, after: pieceText(el) })),
 				);
 				if (!edits.length) {
 					stop();
@@ -438,25 +499,20 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 		}
 	}
 
-	/* While editing: the text that can be changed shows it on hover, the one being typed in has
-	   an accent outline; what can't be changed fades. The page keeps its size (no space added
-	   under it, so no scrollbar appears): scrolling to the text being typed in keeps it above the bar */
+	/* While editing: no outline around the text that can be changed (nor the browser's own focus
+	   ring), only the text cursor; table cells take a click anywhere (placeCaretNear). What can't be
+	   changed fades. The page keeps its size (no space added under it, so no scrollbar appears):
+	   scrolling to the text being typed in keeps it above the bar */
 	:root.kit-editing {
 		scroll-padding-bottom: 6rem;
 	}
-	:root.kit-editing [data-kit-src][contenteditable] {
-		border-radius: 0.2rem;
-		outline: 1px dashed transparent;
-		outline-offset: 1px;
+	:root.kit-editing [data-kit-src][contenteditable],
+	:root.kit-editing .sl-markdown-content :is(td, th) {
 		cursor: text;
-		-webkit-box-decoration-break: clone;
-		box-decoration-break: clone;
 	}
-	:root.kit-editing [data-kit-src][contenteditable]:hover {
-		outline-color: var(--sl-color-gray-3);
-	}
-	:root.kit-editing [data-kit-src][contenteditable]:focus {
-		outline: 2px solid var(--sl-color-text-accent);
+	:root.kit-editing [data-kit-src][contenteditable]:focus,
+	:root.kit-editing [data-kit-src][contenteditable]:focus-visible {
+		outline: none;
 	}
 	:root.kit-editing .sl-markdown-content :is(.expressive-code, pre, .diagram-zoom, img) {
 		opacity: 0.45;

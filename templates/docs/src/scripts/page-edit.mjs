@@ -21,7 +21,7 @@ const TEXTS = {
     saved: (version) => (version ? `Saved (version ${version})` : 'Saved'),
     savedNoGit: 'Saved, but not recorded in git: run kit doctor',
     linksUpdated: (n) => `${n} link${n === 1 ? '' : 's'} to the renamed section${n === 1 ? '' : 's'} updated`,
-    newLine: 'One line at a time: new lines can’t be added here',
+    newLine: 'New lines can’t go in a title, a heading, bold or italic text, a link or code',
     errors: {
       off: 'Editing is turned off for this website. Nothing was saved.',
       forbidden: 'The website refused the change: open it with its usual address. Nothing was saved.',
@@ -51,7 +51,7 @@ const TEXTS = {
     saved: (version) => (version ? `Enregistré (version ${version})` : 'Enregistré'),
     savedNoGit: 'Enregistré, mais pas dans git : lancez kit doctor',
     linksUpdated: (n) => `${n} lien${n === 1 ? '' : 's'} vers la section renommée mis à jour`,
-    newLine: 'Une ligne à la fois : pas de nouvelle ligne ici',
+    newLine: 'Pas de nouvelle ligne dans un titre, du gras ou de l’italique, un lien ou du code',
     errors: {
       off: 'La modification est désactivée sur ce site. Rien n’a été enregistré.',
       forbidden: 'Le site a refusé la modification : ouvrez-le avec son adresse habituelle. Rien n’a été enregistré.',
@@ -107,5 +107,23 @@ export function collectEdits(pieces) {
 
 // Pasted text: plain, on one line
 export function cleanPaste(text) {
-  return String(text ?? '').replace(/[ \t]*[\r\n]+[ \t]*/g, ' ').replace(/\t/g, ' ');
+  return String(text ?? '').replace(/[ \t]*[\r\n\u2028\u2029]+[ \t]*/g, ' ').replace(/\t/g, ' ');
 }
+
+// A new line typed while editing (a <br> in the text), as it is sent to the docs server: U+2028.
+// One = a line break, two or more in a row = a new paragraph (src/page-edit/markdown-text.mjs).
+export const LINE_BREAK = '\u2028';
+
+// The text of an editable piece as it is sent: its text, each <br> typed as a LINE_BREAK
+export function pieceText(node) {
+  if (!node) return '';
+  if (node.nodeType === 3) return node.nodeValue ?? '';
+  if (node.nodeName === 'BR') return LINE_BREAK;
+  let text = '';
+  for (const child of node.childNodes ?? []) text += pieceText(child);
+  return text;
+}
+
+// How many <br> a key puts: Enter = a new paragraph (2: an empty line shows it), Shift+Enter or
+// any new line in a table cell = a line break (1)
+export const breaksFor = ({ shift, cell }) => (shift || cell ? 1 : 2);

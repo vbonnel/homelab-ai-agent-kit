@@ -194,6 +194,118 @@ export function yamlScalar(value, like = '') {
   return !like.startsWith('"') && plainSafe ? v : JSON.stringify(v);
 }
 
+// A new line typed in the browser, as it is sent: U+2028 (LINE SEPARATOR). One = a line break in
+// the paragraph (Shift+Enter), two or more in a row = a new paragraph (Enter). Not "\n": the text
+// shown already holds the file's own line ends.
+export const BREAK = '\u2028';
+const BREAKS = /\u2028+/g;
+
+const QUOTE = /^(?:[ \t]{0,3}>[ \t]?)*/;
+const ITEM = /^((?:[ \t]{0,3}>[ \t]?)*)([ \t]*)(?:([-+*])|(\d{1,9})([.)]))([ \t]+)(\[[ xX]\][ \t]+)?/;
+// A line that ends the paragraph above it (looking up for its list item stops there)
+const NOT_PARAGRAPH = /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|`{3}|~{3}|:::|\||<)/;
+const lineAt = (text, from) => {
+  const end = text.indexOf('\n', from);
+  return text.slice(from, end < 0 ? text.length : end);
+};
+const lineStartOf = (text, offset) => text.lastIndexOf('\n', offset - 1) + 1;
+const blankLine = (line) => !line.replace(QUOTE, '').trim();
+
+// What a new line typed at `offset` is written as: { paragraph, line }. In a list item (the
+// nearest item marker of the same paragraph, at or above it): Enter = a new item (the same marker,
+// the next number), Shift+Enter = `\` and the next line indented like the item's text. Elsewhere:
+// a blank line (`>` kept in a quote), or `\`; then the line's own quote markers and indentation.
+export function breakContext(fileText, offset) {
+  const text = String(fileText ?? '');
+  let from = lineStartOf(text, offset);
+  const own = /^(?:[ \t]*>[ \t]?)*[ \t]*/.exec(lineAt(text, from))[0];
+  for (let n = 0; n < 500; n++) {
+    const line = lineAt(text, from);
+    const m = ITEM.exec(line);
+    if (m) {
+      const marker = m[3] ?? `${Number(m[4]) + 1}${m[5]}`;
+      const width = m[2].length + (m[3] ?? `${m[4]}${m[5]}`).length + m[6].length;
+      return { paragraph: `\n${m[1]}${m[2]}${marker}${m[6]}${m[7] ? '[ ] ' : ''}`, line: `\\\n${m[1]}${' '.repeat(width)}` };
+    }
+    if (from === 0 || NOT_PARAGRAPH.test(line.replace(QUOTE, ''))) break;
+    const prevFrom = lineStartOf(text, from - 1);
+    const prev = text.slice(prevFrom, from - 1);
+    if (blankLine(prev) || NOT_PARAGRAPH.test(prev.replace(QUOTE, ''))) break;
+    from = prevFrom;
+  }
+  const quote = QUOTE.exec(own)[0];
+  return { paragraph: `\n${quote.trimEnd()}\n${own}`, line: `\\\n${own}` };
+}
+
+// The typed text `middle` (with new lines) replacing from-to -> { from, to, text }. `breaks`: new
+// lines are allowed here (else each becomes a space, as in older builds). In a table cell a new
+// line is <br />. A new line where the source line ends takes the place of that line end; one at
+// the start of a paragraph or after its last text is dropped. The text after a new line (typed or
+// already in the file) never starts a block.
+function writeBreaks(fileText, { from, to, middle, cell, heading, mdx, breaks }) {
+  const lineStart = atLineStart(fileText, from);
+  if (!breaks) {
+    return { from, to, text: escapeTyped(middle.replace(BREAKS, ' '), { cell, heading, mdx, lineStart }) };
+  }
+  const chunks = middle.split(BREAKS);
+  const runs = middle.match(BREAKS).map((run) => run.length);
+  if (cell) {
+    let text = escapeTyped(chunks[0], { cell, mdx });
+    for (let k = 1; k < chunks.length; k++) {
+      text += '<br />'.repeat(runs[k - 1]) + escapeTyped(chunks[k], { cell, mdx }).replace(/^ +/, '');
+    }
+    if (chunks.at(-1) === '') to += /^ */.exec(fileText.slice(to))[0].length; // no space after the <br />
+    return { from, to, text };
+  }
+  const where = breakContext(fileText, from);
+  const sep = (k) => (runs[k] >= 2 ? where.paragraph : where.line);
+  // A new line first: after the line's prefix it can only replace the line end above (same paragraph)
+  if (chunks[0] === '' && lineStart) {
+    const lineFrom = lineStartOf(fileText, from);
+    const prev = lineFrom > 0 ? fileText.slice(lineStartOf(fileText, lineFrom - 1), lineFrom - 1) : '';
+    if (lineFrom > 0 && !blankLine(prev) && !NOT_PARAGRAPH.test(prev.replace(QUOTE, '')) && !ITEM.exec(lineAt(fileText, lineFrom))) {
+      from = lineFrom - 1 - /[ \t]*$/.exec(prev)[0].length;
+    } else {
+      chunks.shift();
+      runs.shift();
+    }
+  }
+  // A new line last: before the end of the source line it replaces that line end (if the paragraph
+  // goes on); else the file's text after it starts the new line
+  let tail = '';
+  if (chunks.length > 1 && chunks.at(-1) === '') {
+    const rest = lineAt(fileText, to);
+    if (!rest.trim()) {
+      const nextFrom = to + rest.length + 1;
+      const next = nextFrom <= fileText.length ? lineAt(fileText, nextFrom) : '';
+      if (nextFrom <= fileText.length && !blankLine(next) && !NOT_PARAGRAPH.test(next.replace(QUOTE, '')) && !ITEM.exec(next)) {
+        to = nextFrom + /^(?:[ \t]*>[ \t]?)*[ \t]*/.exec(next)[0].length;
+        const at = blockStartAt(fileText.slice(to, to + lineAt(fileText, to).length));
+        if (at >= 0) {
+          tail = `${fileText.slice(to, to + at)}\\`;
+          to += at;
+        }
+      } else {
+        chunks.pop();
+        runs.pop();
+      }
+    } else {
+      to += /^[ \t]*/.exec(rest)[0].length;
+      const at = blockStartAt(lineAt(fileText, to));
+      if (at >= 0) {
+        tail = `${fileText.slice(to, to + at)}\\`;
+        to += at;
+      }
+    }
+  }
+  let text = '';
+  chunks.forEach((chunk, k) => {
+    if (k) text += sep(k - 1);
+    text += escapeTyped(chunk, { mdx, lineStart: k ? true : lineStart });
+  });
+  return { from, to, text: text + tail };
+}
+
 const fail = (error, message) => ({ error, message });
 
 // One change of one range -> { part: { from, to, text } } (null part: nothing to change) or an error
@@ -226,8 +338,14 @@ function editPart(fileText, range, before, after, mdx) {
   if (q > 0 && high(before, before.length - q - 1)) q--;
   const from = range.s + map[p];
   const to = range.s + map[before.length - q];
+  const middle = next.slice(p, next.length - q);
+  if (!code && middle.includes(BREAK)) {
+    const breaks = kind.includes('b') && !/[ceh]/.test(kind);
+    const r = writeBreaks(fileText, { from, to, middle, cell: kind.includes('t'), heading: kind.includes('h'), mdx, breaks });
+    return { part: { from: r.from, to: r.to, text: r.text } };
+  }
   const lineStart = !code && atLineStart(fileText, from);
-  const typed = escapeTyped(next.slice(p, next.length - q), {
+  const typed = escapeTyped(middle.replace(BREAKS, ' '), {
     code, cell: kind.includes('t'), heading: kind.includes('h'), mdx, lineStart,
   });
   if (typed === null) return fail('code', 'A backtick (`) cannot be typed inside code.');

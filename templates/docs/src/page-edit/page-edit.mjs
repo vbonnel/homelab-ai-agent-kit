@@ -4,7 +4,8 @@
 // components/PageEdit.astro). When the website is built, each piece of text of a page that its
 // Markdown file holds as plain text is put in <span data-kit-src="S-E">: S-E is where it is in
 // the file. data-kit-kind adds: c inline code, t table cell, h heading, e the only text of a bold /
-// italic / struck part. data-kit-outer="S-E": the part to remove when that text is emptied.
+// italic / struck part, b new lines allowed (right in a paragraph, list item or table cell).
+// data-kit-outer="S-E": the part to remove when that text is emptied.
 // Code blocks, diagrams, pictures, raw HTML and text made by components get nothing.
 // The page looks the same: the spans have no style unless editing.
 // Set in astro.config.mjs: `pageEdit()` in `integrations`. Astro 7 (Sätteri) only; an older
@@ -16,6 +17,7 @@ import { alignText, bodyOffset, codeRange } from './markdown-text.mjs';
 const SKIP = new Set(['pre', 'script', 'style', 'svg', 'textarea', 'template', 'math', 'button']);
 const WRAPPERS = new Set(['strong', 'em', 'del', 's', 'a', 'code']);
 const EMPHASIS = new Set(['strong', 'em', 'del', 's']);
+const BLOCKS = new Set(['p', 'li', 'td', 'th']);
 const isElement = (node, tags) => node?.type === 'element' && tags.has(node.tagName);
 
 // One text node -> the span's properties, or null when it can't be edited. `ctx`: Sätteri's hast
@@ -43,6 +45,9 @@ export function editableProps(node, ctx, text, base) {
   if (chain.some((p) => isElement(p, new Set(['td', 'th'])))) kind += 't';
   if (chain.some((p) => p.type === 'element' && /^h[1-6]$/.test(p.tagName))) kind += 'h';
   if (isElement(chain[0], EMPHASIS) && only(chain[0])) kind += 'e';
+  // Right in a paragraph, a list item or a table cell (not in bold, a link, code, a heading): new
+  // lines can be typed (Enter / Shift+Enter, components/PageEdit.astro)
+  if (isElement(chain[0], BLOCKS)) kind += 'b';
   // Emptied, the text takes away the outermost of the bold / link / code parts holding only it
   let outer = null;
   for (const p of chain) {
