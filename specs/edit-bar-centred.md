@@ -1,6 +1,6 @@
 # Edit button: the bottom bar centred on the window
 
-Status: building
+Status: ready to merge
 Size: small
 Database change: no
 New settings (.env keys): none
@@ -26,7 +26,7 @@ screen it sits to the right. It becomes centred on the window.
 `--sl-content-inline-start`.
 
 ## Acceptance checks
-- [ ] `scripts/test.sh` passes
-- [ ] Playground, headless Chromium, 1280 / 1600 / 900 px wide windows: the bar's left and right
-      gaps to the window edges are equal; on a phone it is full width; the 19 editing checks pass
+- [x] `scripts/test.sh` passes (74 tests)
+- [x] Playground, headless Chromium: 1280 / 1600 / 900 px windows, gaps 288/288, 448/448, 98/98;
+      390 px phone: full width; the 19 editing checks pass
 - [ ] Owner, in a browser: the bar is centred
