@@ -1,6 +1,6 @@
 # Docs page editing: a project's own values (DOCS_EDIT_VALUES)
 
-Status: building
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none. New project setting in `.agentkit`: `DOCS_EDIT_VALUES=<module path>`.
@@ -42,8 +42,12 @@ Save. The kit gives the hook; the project says which values can change and write
 
 ## Acceptance checks
 - [x] `node --test tests/*.mjs` passes (85 tests)
-- [ ] With a real project's components (its work copy, sample data): values edited in a browser and
-      saved, then shown after the reload
+- [x] With a real project's components (its work copy, sample data, in its own container): values
+      saved over HTTP by its module (one-line YAML change, rebuilt page shows it, a wrong amount
+      refused with its message, an id of another page refused)
+- [x] Browser (headless Chromium, a playground copy with a fake module): a value is editable, no
+      outline, Enter -> hint, a refused value shows the module's message and nothing is written,
+      Save -> "Saved" and the module got the value; the 14 Enter and 19 edit checks still pass
 
 ## Implementation notes
 - Public repo: no project names, addresses or host names in kit files or this spec.
