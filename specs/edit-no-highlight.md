@@ -1,6 +1,6 @@
 # Edit button: no highlight on changed text, no scrollbar when editing starts
 
-Status: planning
+Status: approved
 Size: small
 Database change: no
 New settings (.env keys): none
