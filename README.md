@@ -38,7 +38,9 @@ One command to build software using AI in your SWE projects:
   **Save** (or **Discard**). Only the words you changed are written into the page's Markdown file;
   the website is rebuilt and the file is saved in git as its own version (undo works like for any
   change). Text only: no new lines or formatting, and characters like `*` or `#` show as typed;
-  code blocks, diagrams and pictures can't be changed there. It is off by default: when on,
+  code blocks, diagrams and pictures can't be changed there. Renaming a heading changes its
+  `#anchor`: the links to that section in the site's pages are updated in the same save (when
+  one can't be, e.g. a link in the sidebar settings, nothing is saved and the bar names it). It is off by default: when on,
   **anyone who can open the website can change it** (no password), so turn it on only for a site
   that only you can reach. Other websites can't save through your browser, and a copy of the
   site served by anything else never shows the button.
