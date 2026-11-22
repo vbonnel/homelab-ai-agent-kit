@@ -339,8 +339,8 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 	/* The bar at the bottom of the window while editing (and the "Saved" message) */
 	.kit-edit-bar {
 		position: fixed;
-		/* centred over the page, beside the sidebar (Starlight's --sl-content-inline-start) */
-		inset-inline: calc(var(--sl-content-inline-start, 0px) + 1rem) 1rem;
+		/* centred on the window (max-width + auto margins); drawn over the sidebar where they meet */
+		inset-inline: 1rem;
 		bottom: 1rem;
 		z-index: 15; /* over the page, the sidebars and the top bar; under the full-screen viewer */
 		display: flex;
