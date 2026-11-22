@@ -67,9 +67,9 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 }
 
 <script>
-	import { EDIT_API, END_MARK, SAVED_KEY, breaksFor, cleanPaste, collectEdits, errorMessage, labels, pieceText, savedMessage } from '../scripts/page-edit.mjs';
+	import { EDIT_API, END_MARK, SAVED_KEY, breaksFor, cleanPaste, collectEdits, collectValues, errorMessage, labels, pieceText, savedMessage } from '../scripts/page-edit.mjs';
 
-	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string; detail?: unknown; links?: number };
+	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string; message?: string; detail?: unknown; links?: number };
 
 	// contenteditable="true", not "plaintext-only": browsers show a plaintext-only text's line ends as
 	// breaks (the paragraph would change shape). Formatting, rich paste and drops are blocked below;
@@ -100,13 +100,14 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 			let timer: ReturnType<typeof setTimeout> | undefined;
 
 			const pieces = () => {
-				const list = [...document.querySelectorAll<HTMLElement>('.sl-markdown-content span[data-kit-src]')];
+				// The page's own text, and values a project's components marked (data-kit-value)
+				const list = [...document.querySelectorAll<HTMLElement>('.sl-markdown-content :is(span[data-kit-src], [data-kit-value])')];
 				if (heading && titleSrc) list.unshift(heading);
 				return list;
 			};
 			const pieceOf = (target: EventTarget | null) => {
 				const el = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
-				const piece = el?.closest<HTMLElement>('[data-kit-src]');
+				const piece = el?.closest<HTMLElement>('[data-kit-src], [data-kit-value]');
 				return piece && originals.has(piece) ? piece : null;
 			};
 			const changed = () => [...originals].filter(([el, text]) => pieceText(el) !== text);
@@ -232,7 +233,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				let best: HTMLElement | null = null;
 				let bestDistance = Infinity;
 				let atEnd = true;
-				for (const el of block.querySelectorAll<HTMLElement>('span[data-kit-src]')) {
+				for (const el of block.querySelectorAll<HTMLElement>('span[data-kit-src], [data-kit-value]')) {
 					if (!originals.has(el)) continue;
 					for (const r of el.getClientRects()) {
 						const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
@@ -322,10 +323,10 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 
 			const save = async () => {
 				if (!editing || busy) return;
-				const edits = collectEdits(
-					[...originals].map(([el, before]) => ({ range: el.dataset.kitSrc, before, after: pieceText(el) })),
-				);
-				if (!edits.length) {
+				const all = [...originals].map(([el, before]) => ({ el, before, after: pieceText(el) }));
+				const edits = collectEdits(all.filter((p) => p.el.dataset.kitSrc).map((p) => ({ range: p.el.dataset.kitSrc, before: p.before, after: p.after })));
+				const values = collectValues(all.filter((p) => p.el.dataset.kitValue !== undefined).map((p) => ({ id: p.el.dataset.kitValue, before: p.before, after: p.after })));
+				if (!edits.length && !values.length) {
 					stop();
 					return;
 				}
@@ -338,10 +339,10 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 					const response = await fetch(EDIT_API, {
 						method: 'POST',
 						headers: { 'content-type': 'application/json', 'x-kit-edit': '1' },
-						body: JSON.stringify({ page: location.pathname, edits }),
+						body: JSON.stringify(values.length ? { page: location.pathname, edits, values } : { page: location.pathname, edits }),
 					});
 					answer = await response.json().catch(() => ({}));
-					if (!response.ok || !answer.ok) answer = { error: answer?.error || 'failed', detail: answer?.detail };
+					if (!response.ok || !answer.ok) answer = { error: answer?.error || 'failed', detail: answer?.detail, message: answer?.message };
 				} catch {
 					answer = { error: 'network' };
 				}
@@ -358,7 +359,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				busy = false;
 				for (const el of originals.keys()) el.contentEditable = editableMode;
 				discardButton.disabled = saveButton.disabled = false;
-				show(errorMessage(answer.error ?? 'failed', fr, answer.detail), 'error');
+				show(errorMessage(answer.error ?? 'failed', fr, answer.detail, answer.message), 'error');
 			};
 
 			openButton.addEventListener('click', start);
@@ -516,12 +517,12 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 	:root.kit-editing {
 		scroll-padding-bottom: 6rem;
 	}
-	:root.kit-editing [data-kit-src][contenteditable],
+	:root.kit-editing :is([data-kit-src], [data-kit-value])[contenteditable],
 	:root.kit-editing .sl-markdown-content :is(td, th) {
 		cursor: text;
 	}
-	:root.kit-editing [data-kit-src][contenteditable]:focus,
-	:root.kit-editing [data-kit-src][contenteditable]:focus-visible {
+	:root.kit-editing :is([data-kit-src], [data-kit-value])[contenteditable]:focus,
+	:root.kit-editing :is([data-kit-src], [data-kit-value])[contenteditable]:focus-visible {
 		outline: none;
 	}
 	:root.kit-editing .sl-markdown-content :is(.expressive-code, pre, .diagram-zoom, img) {

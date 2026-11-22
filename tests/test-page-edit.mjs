@@ -18,9 +18,9 @@ import {
 } from '../templates/docs/src/page-edit/markdown-text.mjs';
 import { editableProps, pageEditPlugin } from '../templates/docs/src/page-edit/page-edit.mjs';
 import {
-  LINE_BREAK, breaksFor, cleanPaste, collectEdits, errorMessage, labels, parseRange, pieceText, savedMessage,
+  LINE_BREAK, breaksFor, cleanPaste, collectEdits, collectValues, errorMessage, labels, parseRange, pieceText, savedMessage,
 } from '../templates/docs/src/scripts/page-edit.mjs';
-import { editSettings, hostAllowed, hostName, pageInfo, sameOrigin, toolEnv } from '../lib/docs-edit.mjs';
+import { checkValues, editSettings, hostAllowed, hostName, pageInfo, sameOrigin, toolEnv } from '../lib/docs-edit.mjs';
 import { startDocsServer } from '../lib/docs-serve.mjs';
 import {
   brokenLinks, contentLinks, headingIds, pageLinks, pageUrl, renamedSections, resolveLink, rewriteSectionLinks, siteLinks,
@@ -392,6 +392,8 @@ test('browser helpers: ranges, the changes sent, paste, labels in both languages
   ]), [{ s: 1, e: 4, before: 'abc', after: 'abd' }]);
   assert.equal(cleanPaste('one\r\n  two\n\nthree\tfour'), 'one two three four');
   assert.equal(cleanPaste('a\u2028b\u2029c'), 'a b c', 'no line separators pasted');
+  assert.deepEqual(collectValues([{ id: 'x', before: 'a', after: 'b' }, { id: 'y', before: 'a', after: 'a' }, { id: '', before: 'a', after: 'c' }]),
+    [{ id: 'x', before: 'a', after: 'b' }]);
   // The text sent: each <br> typed is a LINE_BREAK, the file's own line ends stay
   const node = (name, kids = [], value) => ({ nodeType: name === '#text' ? 3 : 1, nodeName: name, nodeValue: value, childNodes: kids });
   const txt = (v) => node('#text', [], v);
@@ -410,15 +412,18 @@ test('browser helpers: ranges, the changes sent, paste, labels in both languages
   assert.equal(fr.change(3), '3 modifications');
   assert.equal(errorMessage('changed', false), en.errors.changed);
   assert.equal(errorMessage('whatever', true), fr.errors.failed);
+  assert.equal(errorMessage('value', false, undefined, 'Not an amount: "abc".'), `${en.errors.value} Not an amount: "abc".`);
+  assert.equal(errorMessage('value', true), fr.errors.value);
   assert.equal(savedMessage({ version: 'abc1234' }, false), 'Saved (version abc1234)');
   assert.equal(savedMessage({ version: '', warning: 'git' }, true), fr.savedNoGit);
 });
 
 // --- The docs server ------------------------------------------------------------------------------
 test('server settings, Host and Origin checks, the built page read', () => {
-  assert.deepEqual(editSettings('DOCS_PORT=4321\nDOCS_EDIT=off\nDOCS_EDIT=on\n'), { edit: true, hosts: [] });
-  assert.deepEqual(editSettings('DOCS_EDIT=yes\nDOCS_EDIT_HOSTS=Docs.Lan, wiki\n'), { edit: false, hosts: ['docs.lan', 'wiki'] });
-  assert.deepEqual(editSettings(undefined), { edit: false, hosts: [] });
+  assert.deepEqual(editSettings('DOCS_PORT=4321\nDOCS_EDIT=off\nDOCS_EDIT=on\n'), { edit: true, hosts: [], values: '' });
+  assert.deepEqual(editSettings('DOCS_EDIT=yes\nDOCS_EDIT_HOSTS=Docs.Lan, wiki\n'), { edit: false, hosts: ['docs.lan', 'wiki'], values: '' });
+  assert.deepEqual(editSettings(undefined), { edit: false, hosts: [], values: '' });
+  assert.equal(editSettings('DOCS_EDIT=on\nDOCS_EDIT_VALUES=docs/src/lib/save.mjs\n').values, 'docs/src/lib/save.mjs');
   assert.equal(hostName('[::1]:4321'), '::1');
   assert.equal(hostName('Example.Org:80'), 'example.org');
   for (const ok of ['192.0.2.7:4321', '[::1]:4321', 'localhost:4321', '127.0.0.1']) assert.equal(hostAllowed(ok), true, ok);
@@ -442,6 +447,17 @@ test('server settings, Host and Origin checks, the built page read', () => {
     ['27-31', { s: 27, e: 31, kind: 'e', outer: { s: 25, e: 33 } }],
     ['11-16', { s: 11, e: 16, kind: 'y', outer: null }],
   ]);
+  assert.deepEqual([...info.values], []);
+  const withValues = pageInfo(`${html}<td><span class="x" data-kit-value="people|names.0|text">Alex</span></td><p data-kit-value="a &amp; b">x</p>`);
+  assert.deepEqual([...withValues.values], ['people|names.0|text', 'a & b']);
+  // The values sent: only ids the page holds, once each, unchanged ones dropped
+  const ids = new Set(['a', 'b']);
+  assert.deepEqual(checkValues(undefined, ids), { values: [] });
+  assert.deepEqual(checkValues([{ id: 'a', before: '1', after: '2' }, { id: 'b', before: 'x', after: 'x' }], ids), { values: [{ id: 'a', before: '1', after: '2' }] });
+  assert.equal(checkValues([{ id: 'c', before: '1', after: '2' }], ids).error, 'bad', 'not on the page');
+  assert.equal(checkValues([{ id: 'a', before: '1', after: '2' }, { id: 'a', before: '1', after: '3' }], ids).error, 'bad', 'twice');
+  assert.equal(checkValues([{ id: 'a', before: 1, after: '2' }], ids).error, 'bad');
+  assert.equal(checkValues('x', ids).error, 'bad');
   assert.equal(pageInfo('<p>no editing</p>'), null);
   assert.equal(pageInfo('<kit-page-edit data-file="a.md" data-hash="short">'), null);
 });
@@ -533,6 +549,84 @@ test('server: editing on / off, a save writes the file, builds, saves only it in
   writeFileSync(join(p.P, '.agentkit'), 'DOCS_EDIT=off\n');
   assert.deepEqual((await send(p.server, { method: 'GET' })).json, { enabled: false });
   assert.deepEqual((await send(p.server, { body: helloEdit(p) })).json.error, 'off');
+});
+
+// A project's own values (DOCS_EDIT_VALUES): its module saves them; the kit checks, builds, undoes
+const VALUES_MODULE = `import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+export async function saveValues({ root, values }) {
+  const f = join(root, 'data.json');
+  const old = readFileSync(f, 'utf8');
+  const data = JSON.parse(old);
+  for (const v of values) {
+    if (v.after === 'BAD') return { error: 'value', message: 'Not a name: "BAD".' };
+    if (data[v.id] !== v.before) return { error: 'changed', message: 'The value changed.' };
+    data[v.id] = v.after;
+  }
+  writeFileSync(f, JSON.stringify(data));
+  return { count: values.length, restore: async () => writeFileSync(f, old) };
+}
+`;
+function valuesProject(t, { setting = 'values.mjs' } = {}) {
+  const p = project(t);
+  writeFileSync(join(p.P, 'values.mjs'), VALUES_MODULE);
+  writeFileSync(join(p.P, 'data.json'), JSON.stringify({ name: 'Alex', city: 'Town' }));
+  writeFileSync(join(p.P, '.agentkit'), `DOCS_EDIT=on\n${setting ? `DOCS_EDIT_VALUES=${setting}\n` : ''}`);
+  const dist = join(p.P, 'docs/dist/page/index.html');
+  writeFileSync(dist, readFileSync(dist, 'utf8').replace('</div>', '<table><tr><td><span data-kit-value="name">Alex</span></td>'
+    + '<td><span data-kit-value="city">Town</span></td></tr></table></div>'));
+  const data = () => JSON.parse(readFileSync(join(p.P, 'data.json'), 'utf8'));
+  return { ...p, data };
+}
+const valueSave = (values, edits = []) => ({ page: '/page/', edits, values });
+
+test('server: project values saved by the project\'s module, no git version, undone when the build fails', async (t) => {
+  const p = valuesProject(t);
+  await p.ready;
+  const head = git(p.P, 'rev-parse', 'HEAD');
+  const r = await send(p.server, { body: valueSave([{ id: 'name', before: 'Alex', after: 'Sam' }, { id: 'city', before: 'Town', after: 'Town' }]) });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(r.json, { ok: true, version: '', values: 1 });
+  assert.deepEqual(p.data(), { name: 'Sam', city: 'Town' });
+  assert.deepEqual(p.builds, [p.P], 'built once');
+  assert.equal(git(p.P, 'rev-parse', 'HEAD'), head, 'no git version for values');
+  assert.ok(p.logs.some((l) => l.startsWith('Docs edit: 1 value saved')));
+  // Refused by the module: its message, nothing written, no build
+  const bad = await send(p.server, { body: valueSave([{ id: 'name', before: 'Sam', after: 'BAD' }]) });
+  assert.deepEqual([bad.status, bad.json.error, bad.json.message], [400, 'value', 'Not a name: "BAD".']);
+  const stale = await send(p.server, { body: valueSave([{ id: 'name', before: 'Alex', after: 'Kim' }]) });
+  assert.deepEqual([stale.status, stale.json.error], [409, 'changed']);
+  assert.deepEqual(p.data(), { name: 'Sam', city: 'Town' });
+  assert.equal(p.builds.length, 1);
+  // An id the page does not hold
+  assert.equal((await send(p.server, { body: valueSave([{ id: 'other', before: 'a', after: 'b' }]) })).json.error, 'bad');
+  // The build fails: the module puts the value back
+  p.state.failBuild = true;
+  const failed = await send(p.server, { body: valueSave([{ id: 'city', before: 'Town', after: 'City' }]) });
+  assert.deepEqual([failed.status, failed.json.error], [500, 'build']);
+  assert.deepEqual(p.data(), { name: 'Sam', city: 'Town' });
+});
+
+test('server: values and page text in one save; no module or one outside the project -> values refused', async (t) => {
+  const p = valuesProject(t);
+  await p.ready;
+  const r = await send(p.server, { body: valueSave([{ id: 'name', before: 'Alex', after: 'Sam' }], helloEdit(p).edits) });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.values, 1);
+  assert.equal(r.json.version, git(p.P, 'rev-parse', '--short', 'HEAD'));
+  assert.equal(git(p.P, 'show', '--name-only', '--format=', 'HEAD'), 'docs/src/content/docs/page.md', 'only the page in git');
+  assert.equal(p.data().name, 'Sam');
+
+  const none = valuesProject(t, { setting: '' });
+  await none.ready;
+  assert.equal((await send(none.server, { body: valueSave([{ id: 'name', before: 'Alex', after: 'Sam' }]) })).json.error, 'bad');
+  const outside = valuesProject(t, { setting: '../values.mjs' });
+  await outside.ready;
+  const o = await send(outside.server, { body: valueSave([{ id: 'name', before: 'Alex', after: 'Sam' }]) });
+  assert.deepEqual([o.status, o.json.error], [500, 'failed']);
+  assert.equal(outside.data().name, 'Alex');
+  // Nothing changed at all: fine, nothing done
+  assert.deepEqual((await send(none.server, { body: { page: '/page/', edits: [] } })).json, { ok: true, version: '', unchanged: true });
 });
 
 test('server: requests another website could make are refused, nothing written', async (t) => {
@@ -643,9 +737,9 @@ test('template: the Edit button, its bar and what it sends; marked files; no add
   // No outline around editable text (hover or typing): only the text cursor; cells take a click anywhere
   const editing = edit.slice(edit.indexOf(':root.kit-editing {'));
   assert.doesNotMatch(editing, /\[contenteditable\][^{]*\{[^}]*outline: (?:1px dashed|2px solid)/, 'no outline on editable text');
-  assert.match(editing, /\[data-kit-src\]\[contenteditable\]:focus[^{]*\{[^}]*outline: none;/);
+  assert.match(editing, /\[data-kit-src\], \[data-kit-value\]\)\[contenteditable\]:focus[^{]*\{[^}]*outline: none;/);
   assert.ok(edit.includes('cursor: text'));
-  for (const needed of ['pieceText(', 'breaksFor(', "kind.includes('b')", 'placeCaretNear(', "createElement('br')"]) assert.ok(edit.includes(needed), needed);
+  for (const needed of ['pieceText(', 'breaksFor(', "kind.includes('b')", 'placeCaretNear(', "createElement('br')", '[data-kit-value]', 'collectValues(', 'answer.message']) assert.ok(edit.includes(needed), needed);
   // Changed text has no colour of its own; editing adds no space under the page (no scrollbar)
   assert.ok(!edit.includes('kit-edit-changed'), 'no changed-text highlight');
   assert.doesNotMatch(edit, /kit-editing body \{[^}]*padding-bottom/, 'no space added under the page');
