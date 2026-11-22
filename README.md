@@ -240,7 +240,20 @@ DOCS_PORT=4321               # written by `kit docs service`
 DOCS_EDIT=on                 # Edit button on (kit docs edit on / off); missing = off
 DOCS_EDIT_HOSTS=docs.lan     # optional: names (not IP addresses) the website is opened with,
                              # when editing should work through them too
+DOCS_EDIT_VALUES=docs/src/lib/save-values.mjs
+                             # optional: the project's module that saves its own values
 ```
+
+**Project values (`DOCS_EDIT_VALUES`).** Pages made by a project's own components (text from its
+data files rather than from the page's Markdown) can be edited with the same Edit button: the
+component puts each value in an element with `data-kit-value="<id>"` (the id says where the value
+comes from; the docs server accepts only ids the built page holds). On Save the browser sends
+`values: [{ id, before, after }]` (a new line typed in a value marked `data-kit-kind="b"` is
+U+2028), and the docs server calls the module's
+`export async function saveValues({ root, page, values })`, which checks and writes them and
+returns `{ count, restore }` (restore puts the files back if the website build then fails) or
+`{ error: 'value' | 'changed', message }` (the message is shown in the bar). Values are not saved
+in git by the kit: keeping their history is the project's choice.
 
 ## Settings (per container)
 
