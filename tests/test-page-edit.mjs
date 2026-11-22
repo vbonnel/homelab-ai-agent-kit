@@ -14,10 +14,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  alignText, applyEdits, atLineStart, blockStartAt, bodyOffset, codeRange, escapeTyped, titleRange, yamlScalar, yamlValue,
+  BREAK, alignText, applyEdits, atLineStart, blockStartAt, bodyOffset, breakContext, codeRange, escapeTyped, titleRange, yamlScalar, yamlValue,
 } from '../templates/docs/src/page-edit/markdown-text.mjs';
 import { editableProps, pageEditPlugin } from '../templates/docs/src/page-edit/page-edit.mjs';
-import { cleanPaste, collectEdits, errorMessage, labels, parseRange, savedMessage } from '../templates/docs/src/scripts/page-edit.mjs';
+import {
+  LINE_BREAK, breaksFor, cleanPaste, collectEdits, errorMessage, labels, parseRange, pieceText, savedMessage,
+} from '../templates/docs/src/scripts/page-edit.mjs';
 import { editSettings, hostAllowed, hostName, pageInfo, sameOrigin, toolEnv } from '../lib/docs-edit.mjs';
 import { startDocsServer } from '../lib/docs-serve.mjs';
 import {
@@ -227,6 +229,73 @@ test('applyEdits: typed Markdown stays text; code, cells, headings, line starts'
     new Map([['0-6', { s: 0, e: 6, kind: '', outer: null }]]), { mdx: true }).text, 'Note \\{x\\}', 'MDX braces');
 });
 
+// New lines typed in the browser (U+2028: one = a line break, two or more = a new paragraph)
+const typed = (file, shown, after, { kind = 'b', piece = shown, mdx = false } = {}) => {
+  const s = file.indexOf(piece), e = s + piece.length;
+  const r = applyEdits(file, [{ s, e, before: shown, after }], new Map([[`${s}-${e}`, { s, e, kind, outer: null }]]), { mdx });
+  return r.error ? r : r.text;
+};
+const P2 = BREAK + BREAK;
+
+test('breakContext: a paragraph, a quote, a list item, an indented paragraph', () => {
+  assert.deepEqual(breakContext('Some text here.\n', 4), { paragraph: '\n\n', line: '\\\n' });
+  assert.deepEqual(breakContext('> Quote text\n', 7), { paragraph: '\n>\n> ', line: '\\\n> ' });
+  assert.deepEqual(breakContext('- First item\n', 7), { paragraph: '\n- ', line: '\\\n  ' });
+  assert.deepEqual(breakContext('  * Nested item\n', 9), { paragraph: '\n  * ', line: '\\\n    ' });
+  assert.deepEqual(breakContext('9. Ninth item\n', 6), { paragraph: '\n10. ', line: '\\\n   ' });
+  assert.deepEqual(breakContext('- [ ] Task text\n', 9), { paragraph: '\n- [ ] ', line: '\\\n  ' });
+  assert.deepEqual(breakContext('> - Quoted item\n', 9), { paragraph: '\n> - ', line: '\\\n>   ' });
+  // A continuation line belongs to the item above it; a second paragraph of an item keeps its indentation
+  const loose = '- Item one\n  goes on\n\n  Second para\n';
+  assert.deepEqual(breakContext(loose, loose.indexOf('goes') + 2), { paragraph: '\n- ', line: '\\\n  ' });
+  assert.deepEqual(breakContext(loose, loose.indexOf('Second') + 2), { paragraph: '\n\n  ', line: '\\\n  ' });
+  // A paragraph right under a heading is not in the list above the heading
+  const head = '- An item\n\n## Title\nText under it\n';
+  assert.deepEqual(breakContext(head, head.indexOf('under')), { paragraph: '\n\n', line: '\\\n' });
+});
+
+test('applyEdits: Enter / Shift+Enter in a paragraph, a quote, list items, a table cell', () => {
+  const para = 'Intro.\n\nOne two three.\n';
+  assert.equal(typed(para, 'One two three.', `One two${P2} three.`), 'Intro.\n\nOne two\n\nthree.\n', 'new paragraph');
+  assert.equal(typed(para, 'One two three.', `One two${BREAK} three.`), 'Intro.\n\nOne two\\\nthree.\n', 'line break');
+  assert.equal(typed(para, 'One two three.', `One two${P2}${P2} three.`), 'Intro.\n\nOne two\n\nthree.\n', 'several Enters: one break');
+  assert.equal(typed(para, 'One two three.', `One two${P2}and more three.`), 'Intro.\n\nOne two\n\nand more three.\n', 'typed after');
+  assert.equal(typed('> Quote one here\n', 'Quote one here', `Quote one${P2} here`), '> Quote one\n>\n> here\n');
+  assert.equal(typed('> Quote one here\n', 'Quote one here', `Quote one${BREAK} here`), '> Quote one\\\n> here\n');
+  const list = '- First item text\n- Second\n';
+  assert.equal(typed(list, 'First item text', `First item${P2} text`), '- First item\n- text\n- Second\n', 'Enter: new item');
+  assert.equal(typed(list, 'First item text', `First item${BREAK} text`), '- First item\\\n  text\n- Second\n');
+  assert.equal(typed('1. Alpha beta\n2. Gamma\n', 'Alpha beta', `Alpha${P2} beta`), '1. Alpha\n2. beta\n2. Gamma\n', 'numbered');
+  // Table cells: a line break (<br />) for both
+  const table = '| a | b |\n| - | - |\n| one two | x |\n';
+  assert.equal(typed(table, 'one two', `one${BREAK} two`, { kind: 'tb' }), '| a | b |\n| - | - |\n| one<br />two | x |\n');
+  assert.equal(typed(table, 'one two', `one${BREAK}two`, { kind: 'tb', mdx: true }), '| a | b |\n| - | - |\n| one<br />two | x |\n', 'MDX too');
+});
+
+test('applyEdits: new lines stay text, at line ends, at the start or end, where they are not allowed', () => {
+  const para = 'One two three.\n';
+  // Typed text and the file's own text that now start a line never start a block
+  assert.equal(typed(para, 'One two three.', `One two${P2}# x three.`), 'One two\n\n\\# x three.\n');
+  assert.equal(typed('See a - b here.\n', 'See a - b here.', `See a${P2} - b here.`), 'See a\n\n\\- b here.\n');
+  assert.equal(typed('Year 2026. Done\n', 'Year 2026. Done', `Year${BREAK} 2026. Done`), 'Year\\\n2026\\. Done\n');
+  // At the end of a source line: the break takes the place of the line end
+  const two = 'Line one\nline two.\n';
+  assert.equal(typed(two, 'Line one\nline two.', `Line one${P2}\nline two.`), 'Line one\n\nline two.\n');
+  assert.equal(typed(two, 'Line one\nline two.', `Line one${BREAK}\nline two.`), 'Line one\\\nline two.\n');
+  assert.equal(typed(two, 'Line one\nline two.', `Line one\n${P2}line two.`), 'Line one\n\nline two.\n', 'cursor after the line end');
+  const items = '- One\n  more\n- Two\n';
+  assert.equal(typed(items, 'One\nmore', `One${P2}\nmore`, { piece: 'One\n  more' }), '- One\n- more\n- Two\n', 'continuation line -> new item');
+  // At the start of a paragraph or after its last text: nothing to break
+  assert.equal(typed(para, 'One two three.', `${P2}One two three.`), para);
+  assert.equal(typed(para, 'One two three.', `One two three.${P2}`), para);
+  assert.equal(typed('- Item\n- Next\n', 'Item', `Item${P2}`), '- Item\n- Next\n', 'end of a list item');
+  assert.equal(typed(para, 'One two three.', `One two three.${P2}Four.`), 'One two three.\n\nFour.\n', 'typed after the end');
+  // Not allowed (an older build without the b mark, a heading, bold): a space, as before
+  assert.equal(typed(para, 'One two three.', `One two${P2}three.`, { kind: '' }), 'One two three.\n');
+  assert.equal(typed('## Head here\n', 'Head here', `Head${BREAK}here`, { kind: 'h' }), '## Head here\n');
+  assert.equal(typed('A **bold one** b\n', 'bold one', `bold${BREAK}one`, { kind: 'e' }), 'A **bold one** b\n');
+});
+
 test('applyEdits: emptied bold / code removed whole; bold keeps its ends; the title', () => {
   assert.equal(apply(change(R.bold, 'bold', '')).text, PAGE.replace('**bold** ', ' '));
   assert.equal(apply(change(R.bold, 'bold', '  ')).text, PAGE.replace('**bold** ', ' '));
@@ -285,10 +354,10 @@ test('editableProps: file offsets, kinds, the part removed when emptied, skipped
   const n = fakeTree();
   const props = (node) => editableProps(node, n.ctx, FILE, base);
   const range = (piece) => `${FILE.indexOf(piece)}-${FILE.indexOf(piece) + piece.length}`;
-  assert.deepEqual(props(n.see), { dataKitSrc: range('See ') });
+  assert.deepEqual(props(n.see), { dataKitSrc: range('See '), dataKitKind: 'b' }, 'in a paragraph: new lines allowed');
   assert.deepEqual(props(n.bold), { dataKitSrc: range('this'), dataKitKind: 'e', dataKitOuter: range('**this**') });
   assert.deepEqual(props(n.code), { dataKitSrc: range('code'), dataKitKind: 'c', dataKitOuter: range('`code`') });
-  assert.deepEqual(props(n.cell), { dataKitSrc: range('cell'), dataKitKind: 't' });
+  assert.deepEqual(props(n.cell), { dataKitSrc: range('cell'), dataKitKind: 'tb' });
   assert.deepEqual(props(n.head), { dataKitSrc: range('Head'), dataKitKind: 'h' });
   assert.equal(props(n.block), null, 'code blocks are not editable');
   assert.equal(props(n.odd), null, 'text the file does not hold that way');
@@ -322,6 +391,18 @@ test('browser helpers: ranges, the changes sent, paste, labels in both languages
     { range: '1-4', before: 'abc', after: 'abd' }, { range: '5-8', before: 'same', after: 'same' }, { range: 'x', before: 'a', after: 'b' },
   ]), [{ s: 1, e: 4, before: 'abc', after: 'abd' }]);
   assert.equal(cleanPaste('one\r\n  two\n\nthree\tfour'), 'one two three four');
+  assert.equal(cleanPaste('a\u2028b\u2029c'), 'a b c', 'no line separators pasted');
+  // The text sent: each <br> typed is a LINE_BREAK, the file's own line ends stay
+  const node = (name, kids = [], value) => ({ nodeType: name === '#text' ? 3 : 1, nodeName: name, nodeValue: value, childNodes: kids });
+  const txt = (v) => node('#text', [], v);
+  assert.equal(LINE_BREAK, BREAK);
+  assert.equal(pieceText(node('SPAN', [txt('One\ntwo'), node('BR'), node('BR'), txt('three'), node('FONT', [txt('!')])])), `One\ntwo${BREAK}${BREAK}three!`);
+  const end = { ...node('BR'), hasAttribute: (name) => name === 'data-kit-end' };
+  assert.equal(pieceText(node('SPAN', [txt('Last'), node('BR'), end])), `Last${BREAK}`, 'the end mark is not sent');
+  assert.equal(breaksFor({ shift: false, cell: false }), 2, 'Enter: new paragraph');
+  assert.equal(breaksFor({ shift: true, cell: false }), 1, 'Shift+Enter: new line');
+  assert.equal(breaksFor({ shift: false, cell: true }), 1, 'in a table cell: new line');
+  assert.deepEqual(collectEdits([{ range: '1-4', before: 'ab', after: `a${BREAK}b` }]), [{ s: 1, e: 4, before: 'ab', after: `a${BREAK}b` }]);
   const en = labels(false), fr = labels(true);
   assert.deepEqual(Object.keys(en).sort(), Object.keys(fr).sort());
   assert.deepEqual(Object.keys(en.errors).sort(), Object.keys(fr.errors).sort());
@@ -559,6 +640,12 @@ test('template: the Edit button, its bar and what it sends; marked files; no add
     "answer?.enabled === true", 'sessionStorage', '@media print', 'kit-editing', 'prefers-reduced-motion']) {
     assert.ok(edit.includes(needed), needed);
   }
+  // No outline around editable text (hover or typing): only the text cursor; cells take a click anywhere
+  const editing = edit.slice(edit.indexOf(':root.kit-editing {'));
+  assert.doesNotMatch(editing, /\[contenteditable\][^{]*\{[^}]*outline: (?:1px dashed|2px solid)/, 'no outline on editable text');
+  assert.match(editing, /\[data-kit-src\]\[contenteditable\]:focus[^{]*\{[^}]*outline: none;/);
+  assert.ok(edit.includes('cursor: text'));
+  for (const needed of ['pieceText(', 'breaksFor(', "kind.includes('b')", 'placeCaretNear(', "createElement('br')"]) assert.ok(edit.includes(needed), needed);
   // Changed text has no colour of its own; editing adds no space under the page (no scrollbar)
   assert.ok(!edit.includes('kit-edit-changed'), 'no changed-text highlight');
   assert.doesNotMatch(edit, /kit-editing body \{[^}]*padding-bottom/, 'no space added under the page');
