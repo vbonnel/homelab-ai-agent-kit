@@ -1,6 +1,6 @@
 # Edit button: no highlight on changed text, no scrollbar when editing starts
 
-Status: building
+Status: ready to merge
 Size: small
 Database change: no
 New settings (.env keys): none
@@ -33,8 +33,8 @@ Two things the owner noticed while editing a page in the browser:
 body in PageEdit.astro; `scroll-padding-bottom` while editing.
 
 ## Acceptance checks
-- [ ] `scripts/test.sh` passes
-- [ ] Playground, headless Chromium: clicking Edit leaves the page height unchanged (a page that
-      fits the window gets no scrollbar); changed text has no background; the 19 editing checks
-      still pass
+- [x] `scripts/test.sh` passes (74 tests)
+- [x] Playground, headless Chromium: clicking Edit leaves the page height unchanged on 4 pages /
+      sizes (the MDX page, exactly as tall as the window, gets no scrollbar); changed text has a
+      clear background; the 19 editing checks still pass
 - [ ] Owner, in a browser: no purple background, no scrollbar on Edit
