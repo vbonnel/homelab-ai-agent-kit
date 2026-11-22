@@ -187,11 +187,9 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				const link = (event.target as Element | null)?.closest?.('a');
 				if (link && (link.closest('.sl-markdown-content') || pieceOf(link))) event.preventDefault();
 			};
+			// Typing: the bar counts the changed texts (they get no colour of their own)
 			const onInput = (event: Event) => {
-				const piece = pieceOf(event.target);
-				if (!piece) return;
-				piece.classList.toggle('kit-edit-changed', piece.textContent !== originals.get(piece));
-				if (!busy) refresh();
+				if (pieceOf(event.target) && !busy) refresh();
 			};
 			const onLeave = (event: BeforeUnloadEvent) => {
 				if (leaving || !changed().length) return;
@@ -234,7 +232,6 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				for (const [el, text] of originals) {
 					if (el.textContent !== text) el.textContent = text;
 					el.removeAttribute('contenteditable');
-					el.classList.remove('kit-edit-changed');
 					if (el === heading) {
 						delete el.dataset.kitSrc;
 						delete el.dataset.kitKind;
@@ -440,9 +437,10 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 	}
 
 	/* While editing: the text that can be changed shows it on hover, the one being typed in has
-	   an accent outline, the changed ones a light accent background; what can't be changed fades */
-	:root.kit-editing body {
-		padding-bottom: 6rem; /* the bar never hides the end of the page */
+	   an accent outline; what can't be changed fades. The page keeps its size (no space added
+	   under it, so no scrollbar appears): scrolling to the text being typed in keeps it above the bar */
+	:root.kit-editing {
+		scroll-padding-bottom: 6rem;
 	}
 	:root.kit-editing [data-kit-src][contenteditable] {
 		border-radius: 0.2rem;
@@ -457,9 +455,6 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 	}
 	:root.kit-editing [data-kit-src][contenteditable]:focus {
 		outline: 2px solid var(--sl-color-text-accent);
-	}
-	:root.kit-editing [data-kit-src].kit-edit-changed {
-		background: var(--sl-color-accent-low);
 	}
 	:root.kit-editing .sl-markdown-content :is(.expressive-code, pre, .diagram-zoom, img) {
 		opacity: 0.45;
