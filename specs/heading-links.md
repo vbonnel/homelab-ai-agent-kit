@@ -1,6 +1,6 @@
 # Edit button: renaming a heading keeps the links to its section working
 
-Status: planning
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -61,7 +61,9 @@ another page -> both files saved in one git version; a link only in the sidebar 
 back, the build run again; a linking page with unsaved changes -> refused.
 
 ## Acceptance checks
-- [ ] `scripts/test.sh` passes
-- [ ] Playground (real build): renaming "Table" updates the home page's `/editing-test/#table`
-      link in the same version; the site has no broken link; a normal text save is unchanged
+- [x] `scripts/test.sh` passes (80 tests)
+- [x] Playground (real build, headless Chromium): renaming "Table" updated the home page's
+      `/editing-test/#table` link in the same version (2 files), bar "Saved (version …) · 1 link to
+      the renamed section updated", 0 broken links; with a sidebar link to `#lists`, renaming
+      "Lists" was refused with that link named, files and website back, nothing saved
 - [ ] Owner, in a browser: rename a linked heading
