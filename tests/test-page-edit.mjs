@@ -20,6 +20,9 @@ import { editableProps, pageEditPlugin } from '../templates/docs/src/page-edit/p
 import { cleanPaste, collectEdits, errorMessage, labels, parseRange, savedMessage } from '../templates/docs/src/scripts/page-edit.mjs';
 import { editSettings, hostAllowed, hostName, pageInfo, sameOrigin, toolEnv } from '../lib/docs-edit.mjs';
 import { startDocsServer } from '../lib/docs-serve.mjs';
+import {
+  brokenLinks, contentLinks, headingIds, pageLinks, pageUrl, renamedSections, resolveLink, rewriteSectionLinks, siteLinks,
+} from '../lib/docs-links.mjs';
 import { KIT_COMPONENTS, KIT_PAGE_EDIT, MARKER, upgradeDocs, usesKitPageEdit } from '../lib/docs-upgrade.mjs';
 
 const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -605,4 +608,177 @@ test('upgradeDocs: the Edit button added to an older site once; kit docs upgrade
   });
   assert.equal(existsSync(join(P, 'docs/node_modules/.astro/data-store.json')), false);
   assert.ok(existsSync(join(P, 'docs/src/page-edit/page-edit.mjs')));
+});
+
+// --- Renamed headings: the links to their sections -----------------------------------------------
+test('links: page addresses, links resolved, heading ids, renamed sections', () => {
+  assert.equal(pageUrl('/a/b/index.html'), '/a/b/');
+  assert.equal(pageUrl('/a/b'), '/a/b/');
+  assert.equal(pageUrl('/index.html'), '/');
+  assert.equal(pageUrl('/page.md'), '/page.md');
+  assert.deepEqual(resolveLink('../a/#table', '/b/c/'), { href: '../a/#table', path: '/b/a/', fragment: 'table' });
+  assert.deepEqual(resolveLink('#x', '/b/'), { href: '#x', path: '/b/', fragment: 'x' });
+  assert.deepEqual(resolveLink('/a#r%C3%A9seau', '/'), { href: '/a#r%C3%A9seau', path: '/a/', fragment: 'réseau' });
+  for (const out of ['https://x.example/#a', 'mailto:me@x.example', '//x.example/a', '']) assert.equal(resolveLink(out, '/'), null, out);
+  assert.deepEqual(headingIds('<h1 id="_top">T</h1><h2 id="a">A</h2><p id="no">x</p><h3 class="x" id="b-1">B</h3>'), ['_top', 'a', 'b-1']);
+  assert.deepEqual([...renamedSections(['_top', 'table', 'lists'], ['_top', 'service-table', 'lists'])], [['table', 'service-table']]);
+  // Two "Setup" headings: renaming the first moves the second's id
+  assert.deepEqual([...renamedSections(['setup', 'setup-1'], ['install', 'setup'])], [['setup', 'install'], ['setup-1', 'setup']]);
+  assert.equal(renamedSections(['a'], ['a', 'b']).size, 0, 'different headings: no guess');
+});
+
+test('links: page text links apart from the sidebar, "On this page" and the # next to headings', () => {
+  const html = '<nav><a href="/side/#s">side</a></nav><starlight-toc><a href="#t">t</a></starlight-toc>'
+    + '<mobile-starlight-toc><a href="#t">t</a></mobile-starlight-toc><main><div class="sl-markdown-content">'
+    + '<h2 id="t">T</h2><a class="sl-anchor-link" href="#t">#</a><a href="/other/#x">x</a><a href="https://e.example/">e</a>'
+    + '</div><footer><a href="/next/">next</a></footer></main>';
+  assert.deepEqual(contentLinks(html, '/p/').map((l) => l.href), ['/other/#x']);
+  assert.deepEqual(pageLinks(html, '/p/').map((l) => l.href), ['/side/#s', '/other/#x', '/next/']);
+  const site = new Map([
+    ['/p/', { ids: new Set(['t']), all: [resolveLink('/q/#gone', '/p/'), resolveLink('/q/#here', '/p/'), resolveLink('/none/', '/p/'), resolveLink('/q.md', '/p/')] }],
+    ['/q/', { ids: new Set(['here']), all: [resolveLink('#_top', '/q/')] }],
+  ]);
+  assert.deepEqual([...brokenLinks(site)], ['/p/|/q/#gone', '/p/|/none/']);
+});
+
+test('rewriteSectionLinks: every way of writing a link to the renamed section, nothing else', () => {
+  const renamed = new Map([['table', 'service-table'], ['setup', 'install']]);
+  const text = [
+    'See [the table](/a/#table), [again](/a#table "with a title"), [up](../a/#table) and <a href="/a/#table">html</a>.',
+    '[ref]: /a/#table',
+    'Not this: [other page](/b/#table), [other section](/a/#lists), [outside](https://x.example/a/#table).',
+    '```md',
+    '[in a code block](/a/#table)',
+    '```',
+    'Same page from a: [here](#setup).',
+  ].join('\n');
+  const r = rewriteSectionLinks(text, '/c/', '/a/', renamed);
+  assert.equal(r.count, 5);
+  assert.equal(r.text, text.replace(/\/a\/#table\)/, '/a/#service-table)').replace('/a#table "', '/a#service-table "')
+    .replace('../a/#table)', '../a/#service-table)').replace('href="/a/#table"', 'href="/a/#service-table"')
+    .replace('[ref]: /a/#table', '[ref]: /a/#service-table'));
+  const self = rewriteSectionLinks(text, '/a/', '/a/', renamed);
+  assert.ok(self.text.includes('[here](#install)'), 'a link to a section of the same page');
+  assert.equal(rewriteSectionLinks('[x](/a/#table)', '/c/', '/a/', new Map()).count, 0);
+});
+
+// A docs project with Markdown pages and a fake build that writes their "built" HTML: headings with
+// ids (numbered when repeated), editable heading text, links, a sidebar
+function linkedSite(t, { pages, sidebar = [] }) {
+  const P = tempDir(t);
+  git(P, 'init', '-q', '-b', 'main');
+  const docs = join(P, 'docs');
+  const content = join(docs, 'src/content/docs');
+  mkdirSync(content, { recursive: true });
+  for (const [name, text] of Object.entries(pages)) writeFileSync(join(content, `${name}.md`), text);
+  writeFileSync(join(P, '.gitignore'), 'docs/dist/\n');
+  writeFileSync(join(P, '.agentkit'), 'DOCS_EDIT=on\n');
+  git(P, 'add', '-A');
+  git(P, 'commit', '-qm', 'start');
+  const slug = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-');
+  const builds = [];
+  const build = async () => {
+    builds.push(Date.now());
+    for (const name of Object.keys(pages)) {
+      const text = readFileSync(join(content, `${name}.md`), 'utf8');
+      const used = new Map();
+      let body = '';
+      let at = text.indexOf('\n---\n') + 5;
+      for (const line of text.slice(at).split('\n')) {
+        const h = /^## (.+)$/.exec(line);
+        if (h) {
+          const base = slug(h[1]);
+          const n = used.get(base) ?? 0;
+          used.set(base, n + 1);
+          const id = n ? `${base}-${n}` : base;
+          body += `<h2 id="${id}"><span data-kit-src="${at + 3}-${at + line.length}" data-kit-kind="h">${h[1]}</span></h2><a class="sl-anchor-link" href="#${id}">#</a>`;
+        } else {
+          body += `<p>${line.replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, '<a href="$2">$1</a>')}</p>`;
+        }
+        at += line.length + 1;
+      }
+      const html = `<!doctype html><nav>${sidebar.map((h) => `<a href="${h}">s</a>`).join('')}</nav><main><h1 id="_top">${name}</h1>`
+        + `<kit-page-edit data-file="src/content/docs/${name}.md" data-hash="${sha256(text)}" data-page-title="${name}"></kit-page-edit>`
+        + `<div class="sl-markdown-content">${body}</div><footer></footer></main>`;
+      mkdirSync(join(docs, 'dist', name), { recursive: true });
+      writeFileSync(join(docs, 'dist', name, 'index.html'), html);
+    }
+    return { ok: true, output: '' };
+  };
+  const server = startDocsServer(join(docs, 'dist'), 0, { host: '127.0.0.1', edit: { build, log: () => {} } });
+  t.after(() => server.close());
+  const ready = build().then(() => new Promise((done) => server.on('listening', done)));
+  const read = (name) => readFileSync(join(content, `${name}.md`), 'utf8');
+  // The edit of a heading, as the browser sends it
+  const rename = (name, from, to) => {
+    const text = read(name);
+    const s = text.indexOf(`## ${from}\n`) + 3;
+    return { page: `/${name}/`, edits: [{ s, e: s + from.length, before: from, after: to }] };
+  };
+  return { P, server, ready, builds, read, rename };
+}
+
+const PAGE_A = '---\ntitle: a\n---\n## Table\nSee [lists](#lists-here) and [the part](/b/#part).\n## Lists here\nEnd.\n## Notes\n';
+const PAGE_B = '---\ntitle: b\n---\n## Part\nBack to [the table](/a/#table), [again](../a/#table "title"), [lists](/a/#lists-here).\n';
+
+test('server: a renamed heading updates the links to its section, in one git version', async (t) => {
+  const s = linkedSite(t, { pages: { a: PAGE_A, b: PAGE_B } });
+  await s.ready;
+  const r = await send(s.server, { body: s.rename('a', 'Table', 'Service table') });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual([r.json.links, r.json.pages], [2, 1]);
+  assert.equal(s.read('a'), PAGE_A.replace('## Table', '## Service table'));
+  assert.equal(s.read('b'), PAGE_B.replace('/a/#table)', '/a/#service-table)').replace('../a/#table "', '../a/#service-table "'));
+  assert.equal(git(s.P, 'log', '-1', '--format=%s'), 'docs: edit "a" in the browser (2 links to renamed sections updated)');
+  assert.deepEqual(git(s.P, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), ['docs/src/content/docs/a.md', 'docs/src/content/docs/b.md']);
+  assert.equal(git(s.P, 'status', '--porcelain'), '', 'nothing left unsaved');
+  assert.deepEqual(brokenLinks(await siteLinks(join(s.P, 'docs/dist'))), new Set(), 'no broken link');
+
+  // A link to a section of the same page is updated in the page itself
+  const own = await send(s.server, { body: s.rename('a', 'Lists here', 'Lists') });
+  assert.equal(own.status, 200, JSON.stringify(own.json));
+  assert.ok(s.read('a').includes('[lists](#lists)') && s.read('b').includes('[lists](/a/#lists)'));
+  assert.deepEqual([own.json.links, own.json.pages], [2, 1]);
+
+  // Linked from another page only
+  const part = await send(s.server, { body: s.rename('b', 'Part', 'Second part') });
+  assert.deepEqual([part.status, part.json.links], [200, 1]);
+  assert.ok(s.read('a').includes('[the part](/b/#second-part)'));
+
+  // A heading nobody links to: one build, nothing else changed
+  const builds = s.builds.length;
+  const plain = await send(s.server, { body: s.rename('a', 'Notes', 'More notes') });
+  assert.equal(plain.status, 200);
+  assert.equal(plain.json.links, undefined);
+  assert.equal(s.builds.length, builds + 1);
+  assert.equal(git(s.P, 'show', '--name-only', '--format=', 'HEAD'), 'docs/src/content/docs/a.md');
+});
+
+test('server: a link that can\'t be updated (sidebar, unsaved page) -> refused, files and website back', async (t) => {
+  const s = linkedSite(t, { pages: { a: PAGE_A, b: PAGE_B }, sidebar: ['/a/#table'] });
+  await s.ready;
+  const head = git(s.P, 'rev-parse', 'HEAD');
+  const r = await send(s.server, { body: s.rename('a', 'Table', 'Service table') });
+  assert.deepEqual([r.status, r.json.error], [409, 'links']);
+  assert.ok(r.json.detail.some((d) => d.includes('/a/#table') && d.includes('sidebar')), JSON.stringify(r.json.detail));
+  assert.equal(s.read('a'), PAGE_A);
+  assert.equal(s.read('b'), PAGE_B);
+  assert.equal(git(s.P, 'rev-parse', 'HEAD'), head);
+  assert.ok(readFileSync(join(s.P, 'docs/dist/a/index.html'), 'utf8').includes('<h2 id="table">'), 'website built again from the files');
+
+  const u = linkedSite(t, { pages: { a: PAGE_A, b: PAGE_B } });
+  await u.ready;
+  writeFileSync(join(u.P, 'docs/src/content/docs/b.md'), `${PAGE_B}\nNot saved yet.\n`);
+  const dirty = await send(u.server, { body: u.rename('a', 'Table', 'Service table') });
+  assert.deepEqual([dirty.status, dirty.json.error], [409, 'links']);
+  assert.ok(dirty.json.detail.every((d) => d.includes('changes not saved in git')), JSON.stringify(dirty.json.detail));
+  assert.equal(u.read('a'), PAGE_A);
+  assert.equal(u.read('b'), `${PAGE_B}\nNot saved yet.\n`, 'the unsaved changes are left as they were');
+});
+
+test('browser helpers: the links messages', () => {
+  assert.equal(errorMessage('links', false, ['b → /a/#table (sidebar)']), `${labels(false).errors.links} b → /a/#table (sidebar)`);
+  assert.equal(errorMessage('links', true), labels(true).errors.links);
+  assert.equal(savedMessage({ version: 'abc1234', links: 3 }, false), 'Saved (version abc1234) · 3 links to the renamed sections updated');
+  assert.equal(savedMessage({ version: 'abc1234', links: 1 }, true), 'Enregistré (version abc1234) · 1 lien vers la section renommée mis à jour');
 });

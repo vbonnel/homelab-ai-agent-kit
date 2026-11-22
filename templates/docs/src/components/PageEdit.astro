@@ -15,6 +15,8 @@
  * - The button shows only when the docs server answers that editing is on (GET /_kit/edit,
  *   `kit docs edit on` in the project): a copy of the site served by anything else never shows it.
  * - The server checks the page file did not change since the website was built (data-hash).
+ * - Renaming a heading changes its #anchor: the server updates the links to it in the site's other
+ *   pages in the same save (the message says how many), or refuses the save and names the link.
  * Labels in English, or French on French pages (src/scripts/page-edit.mjs). Not printed.
  */
 import { createHash } from 'node:crypto';
@@ -64,7 +66,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 <script>
 	import { EDIT_API, SAVED_KEY, cleanPaste, collectEdits, errorMessage, labels, savedMessage } from '../scripts/page-edit.mjs';
 
-	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string };
+	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string; detail?: unknown; links?: number };
 
 	// contenteditable="true", not "plaintext-only": browsers show a plaintext-only text's line ends as
 	// breaks (the paragraph would change shape). Formatting, new lines, rich paste and drops are
@@ -268,13 +270,13 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 						body: JSON.stringify({ page: location.pathname, edits }),
 					});
 					answer = await response.json().catch(() => ({}));
-					if (!response.ok || !answer.ok) answer = { error: answer?.error || 'failed' };
+					if (!response.ok || !answer.ok) answer = { error: answer?.error || 'failed', detail: answer?.detail };
 				} catch {
 					answer = { error: 'network' };
 				}
 				if (answer.ok) {
 					try {
-						sessionStorage.setItem(SAVED_KEY, JSON.stringify({ version: answer.version || '', warning: answer.warning || '' }));
+						sessionStorage.setItem(SAVED_KEY, JSON.stringify({ version: answer.version || '', warning: answer.warning || '', links: answer.links || 0 }));
 					} catch {
 						/* reloads without the message */
 					}
@@ -285,7 +287,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 				busy = false;
 				for (const el of originals.keys()) el.contentEditable = editableMode;
 				discardButton.disabled = saveButton.disabled = false;
-				show(errorMessage(answer.error ?? 'failed', fr), 'error');
+				show(errorMessage(answer.error ?? 'failed', fr, answer.detail), 'error');
 			};
 
 			openButton.addEventListener('click', start);

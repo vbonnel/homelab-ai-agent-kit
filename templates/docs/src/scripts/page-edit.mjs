@@ -20,6 +20,7 @@ const TEXTS = {
     saving: 'Saving… the website is being rebuilt',
     saved: (version) => (version ? `Saved (version ${version})` : 'Saved'),
     savedNoGit: 'Saved, but not recorded in git: run kit doctor',
+    linksUpdated: (n) => `${n} link${n === 1 ? '' : 's'} to the renamed section${n === 1 ? '' : 's'} updated`,
     newLine: 'One line at a time: new lines can’t be added here',
     errors: {
       off: 'Editing is turned off for this website. Nothing was saved.',
@@ -31,6 +32,7 @@ const TEXTS = {
       title: 'The page needs a title. Nothing was saved.',
       notfound: 'This page was not found on the website. Reload it.',
       build: 'The website could not be rebuilt with this change, so nothing was saved.',
+      links: 'This heading is linked to from a place that can’t be updated, so nothing was saved. Keep the heading, or change this link first:',
       network: 'No answer from the website. It may still be saving: reload the page in a minute to check.',
       failed: 'Saving failed. Nothing was saved.',
     },
@@ -48,6 +50,7 @@ const TEXTS = {
     saving: 'Enregistrement… le site est reconstruit',
     saved: (version) => (version ? `Enregistré (version ${version})` : 'Enregistré'),
     savedNoGit: 'Enregistré, mais pas dans git : lancez kit doctor',
+    linksUpdated: (n) => `${n} lien${n === 1 ? '' : 's'} vers la section renommée mis à jour`,
     newLine: 'Une ligne à la fois : pas de nouvelle ligne ici',
     errors: {
       off: 'La modification est désactivée sur ce site. Rien n’a été enregistré.',
@@ -59,6 +62,7 @@ const TEXTS = {
       title: 'La page doit avoir un titre. Rien n’a été enregistré.',
       notfound: 'Cette page est introuvable sur le site. Rechargez-la.',
       build: 'Le site n’a pas pu être reconstruit avec cette modification : rien n’a été enregistré.',
+      links: 'Ce titre est la cible d’un lien qui ne peut pas être mis à jour : rien n’a été enregistré. Gardez le titre, ou changez d’abord ce lien :',
       network: 'Pas de réponse du site. Il enregistre peut-être encore : rechargez la page dans une minute pour vérifier.',
       failed: 'L’enregistrement a échoué. Rien n’a été enregistré.',
     },
@@ -67,15 +71,18 @@ const TEXTS = {
 
 export const labels = (fr) => TEXTS[fr ? 'fr' : 'en'];
 
-export function errorMessage(code, fr) {
+// The bar's message for a refused save; `detail`: the server's list (the links that couldn't be updated)
+export function errorMessage(code, fr, detail) {
   const errors = labels(fr).errors;
-  return Object.hasOwn(errors, code) ? errors[code] : errors.failed;
+  const message = Object.hasOwn(errors, code) ? errors[code] : errors.failed;
+  return code === 'links' && Array.isArray(detail) && detail.length ? `${message} ${detail[0]}` : message;
 }
 
-// The message after the page reloaded: { version, warning } as the server answered
+// The message after the page reloaded: { version, warning, links } as the server answered
 export function savedMessage(info, fr) {
   const t = labels(fr);
-  return info?.warning === 'git' ? t.savedNoGit : t.saved(info?.version || '');
+  const saved = info?.warning === 'git' ? t.savedNoGit : t.saved(info?.version || '');
+  return info?.links > 0 ? `${saved} · ${t.linksUpdated(info.links)}` : saved;
 }
 
 // "S-E" (data-kit-src) -> { s, e }, or null
