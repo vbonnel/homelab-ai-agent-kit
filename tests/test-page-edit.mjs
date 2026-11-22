@@ -556,6 +556,10 @@ test('template: the Edit button, its bar and what it sends; marked files; no add
     "answer?.enabled === true", 'sessionStorage', '@media print', 'kit-editing', 'prefers-reduced-motion']) {
     assert.ok(edit.includes(needed), needed);
   }
+  // Changed text has no colour of its own; editing adds no space under the page (no scrollbar)
+  assert.ok(!edit.includes('kit-edit-changed'), 'no changed-text highlight');
+  assert.doesNotMatch(edit, /kit-editing body \{[^}]*padding-bottom/, 'no space added under the page');
+  assert.match(edit, /:root\.kit-editing \{\s*scroll-padding-bottom: 6rem;/);
   for (const rel of [...KIT_PAGE_EDIT.files, 'src/components/PageEdit.astro', 'src/scripts/page-edit.mjs']) {
     const text = readFileSync(join(TEMPLATE, rel), 'utf8');
     assert.ok(text.includes(MARKER), `${rel} marker`);
