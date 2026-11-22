@@ -1,6 +1,6 @@
 # Docs page editing: Enter like a word processor, table cells easy to click, no outlines
 
-Status: building
+Status: ready to merge
 Size: normal
 Database change: no
 New settings (.env keys): none
@@ -73,12 +73,18 @@ The owner tried the Edit button (kit `page-edit`) on real sites and asked (2026-
   focus; Enter handling present.
 
 ## Acceptance checks
-- [ ] `node --test tests/*.mjs` passes
-- [ ] Playground, headless Chromium: Enter splits a paragraph and a list item, Shift+Enter makes
-      a line break, a cell gets a new line; saved files hold the expected Markdown; a click in
-      the empty part of a table cell puts the cursor in it; no outline while editing (screenshot)
-- [ ] The old 19 browser checks still pass (Enter check updated)
+- [x] `node --test tests/*.mjs` passes (83 tests)
+- [x] Playground copy served by this work copy, headless Chromium (14 checks): no outline on
+      hover or while typing (cursor: text); Enter in a paragraph (2 `<br>`), Shift+Enter (1), Enter
+      in a list item, a hint for a heading and bold; a click in the empty part of a table cell then
+      typing changes that cell; Enter in a cell = 1 `<br>`; saved: `playground:` / blank line / new
+      paragraph, `and the\` + next line, `- Third` / `- item`, `The main site<br />second line`;
+      after the reload the page shows them; no script errors
+- [x] The old 19 browser checks still pass (Enter check updated: a list item gets the new line, a heading the hint)
 - [ ] Owner: on a site, Enter / Shift+Enter / a table cell, then Save
 
 ## Implementation notes
+- At the very end of a text a browser shows a new line only with something after it: one more
+  `<br data-kit-end>`, never sent. A space right after a new line is not shown (HTML), and the
+  browser drops it when typing there: what is shown is what is saved.
 - Public repo: no project names, addresses or host names in kit files or this spec.

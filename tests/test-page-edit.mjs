@@ -397,6 +397,8 @@ test('browser helpers: ranges, the changes sent, paste, labels in both languages
   const txt = (v) => node('#text', [], v);
   assert.equal(LINE_BREAK, BREAK);
   assert.equal(pieceText(node('SPAN', [txt('One\ntwo'), node('BR'), node('BR'), txt('three'), node('FONT', [txt('!')])])), `One\ntwo${BREAK}${BREAK}three!`);
+  const end = { ...node('BR'), hasAttribute: (name) => name === 'data-kit-end' };
+  assert.equal(pieceText(node('SPAN', [txt('Last'), node('BR'), end])), `Last${BREAK}`, 'the end mark is not sent');
   assert.equal(breaksFor({ shift: false, cell: false }), 2, 'Enter: new paragraph');
   assert.equal(breaksFor({ shift: true, cell: false }), 1, 'Shift+Enter: new line');
   assert.equal(breaksFor({ shift: false, cell: true }), 1, 'in a table cell: new line');

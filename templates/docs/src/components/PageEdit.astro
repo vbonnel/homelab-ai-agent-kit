@@ -67,7 +67,7 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 }
 
 <script>
-	import { EDIT_API, SAVED_KEY, breaksFor, cleanPaste, collectEdits, errorMessage, labels, pieceText, savedMessage } from '../scripts/page-edit.mjs';
+	import { EDIT_API, END_MARK, SAVED_KEY, breaksFor, cleanPaste, collectEdits, errorMessage, labels, pieceText, savedMessage } from '../scripts/page-edit.mjs';
 
 	type Answer = { ok?: boolean; enabled?: boolean; version?: string; warning?: string; error?: string; detail?: unknown; links?: number };
 
@@ -168,6 +168,16 @@ if (entry.filePath && /\.mdx?$/i.test(entry.filePath)) {
 					range.setStartAfter(br);
 				}
 				range.collapse(true);
+				// At the very end of the text, a browser shows a new line only with something after it:
+				// one more <br>, marked so it is never sent (pieceText)
+				const rest = document.createRange();
+				rest.setStart(range.startContainer, range.startOffset);
+				rest.setEnd(piece, piece.childNodes.length);
+				if (!rest.toString() && !rest.cloneContents().querySelector('br')) {
+					const end = document.createElement('br');
+					end.setAttribute(END_MARK, '');
+					piece.append(end);
+				}
 				selection.removeAllRanges();
 				selection.addRange(range);
 				refresh();

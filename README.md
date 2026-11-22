@@ -37,8 +37,11 @@ One command to build software using AI in your SWE projects:
   `kit docs edit on`) lets you fix the text of a page in the page itself: click Edit, type, then
   **Save** (or **Discard**). Only the words you changed are written into the page's Markdown file;
   the website is rebuilt and the file is saved in git as its own version (undo works like for any
-  change). Text only: no new lines or formatting, and characters like `*` or `#` show as typed;
-  code blocks, diagrams and pictures can't be changed there. Renaming a heading changes its
+  change). Text and new lines: **Enter** starts a new paragraph (a new item in a list),
+  **Shift+Enter** a new line in the same paragraph, both a new line in a table cell (none in a
+  title, a heading, bold, a link or code); a click anywhere in a table cell puts the cursor in it.
+  No formatting: characters like `*` or `#` show as typed; code blocks, diagrams and pictures
+  can't be changed there. Renaming a heading changes its
   `#anchor`: the links to that section in the site's pages are updated in the same save (when
   one can't be, e.g. a link in the sidebar settings, nothing is saved and the bar names it). It is off by default: when on,
   **anyone who can open the website can change it** (no password), so turn it on only for a site

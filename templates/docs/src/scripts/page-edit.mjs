@@ -114,11 +114,13 @@ export function cleanPaste(text) {
 // One = a line break, two or more in a row = a new paragraph (src/page-edit/markdown-text.mjs).
 export const LINE_BREAK = '\u2028';
 
-// The text of an editable piece as it is sent: its text, each <br> typed as a LINE_BREAK
+// The text of an editable piece as it is sent: its text, each <br> typed as a LINE_BREAK (not the
+// one marked data-kit-end: put after a new line at the very end, so the browser shows that line)
+export const END_MARK = 'data-kit-end';
 export function pieceText(node) {
   if (!node) return '';
   if (node.nodeType === 3) return node.nodeValue ?? '';
-  if (node.nodeName === 'BR') return LINE_BREAK;
+  if (node.nodeName === 'BR') return node.hasAttribute?.(END_MARK) ? '' : LINE_BREAK;
   let text = '';
   for (const child of node.childNodes ?? []) text += pieceText(child);
   return text;
